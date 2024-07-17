@@ -1,0 +1,9 @@
+[package]
+name = "test-disc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serenity = { version = "0.12", features = ["client"] }
+tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+dotenv = { version = "0.15.0" }
