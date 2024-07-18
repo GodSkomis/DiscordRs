@@ -5,5 +5,7 @@ edition = "2021"
 
 [dependencies]
 serenity = { version = "0.12", features = ["client"] }
-tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+# tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.21.2", features = ["full"] }
 dotenv = { version = "0.15.0" }
+mini_redis = { path = "D:\\111\\.rust\\disc-test\\mini-redis" }

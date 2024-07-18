@@ -8,19 +8,80 @@ use serenity::prelude::RwLock;
 use serenity::prelude::TypeMapKey;
 use serenity::model::channel::Message;
 
+// use tokio::net::TcpStream;
+// use tokio::io::{ AsyncWriteExt, AsyncReadExt };
+
 use dotenv::dotenv;
 
 use std::env;
 use std::collections::HashSet;
 use std::sync::Arc;
+// use std::process::Command;
+
+// use mini_redis::bin::client;
+use mini_redis::{ Client as MiniClient };
 
 mod voice;
 
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
 
+
+const MINIREDIS_URL: &str = "127.0.0.1:6379";
+
 struct Handler;
 
 struct MonitoredChannels;
+
+impl MonitoredChannels {
+    async fn check(&self, channel_id: &u64) -> Result<bool, String> {
+        // let mut stream = TcpStream::connect(REDIS_URL).await.expect("Cannot open a connection");
+
+        // // Отправка данных
+        // match stream.write_all(&channel_id.to_be_bytes()).await {
+        //     Ok(_) => (),
+        //     Err(err) => return Err(err.to_string())
+        // };
+    
+        // // Чтение ответа
+        // let mut buffer = Vec::new();
+        // match stream.read_to_end(&mut buffer).await {
+        //     Ok(_) => (),
+        //     Err(err) => return Err(err.to_string())
+        // };
+
+        // let s = match std::str::from_utf8(&buffer) {
+        //     Ok(v) => v,
+        //     Err(err) => return  Err(err.to_string())
+        // };
+        // let output = Command::new("mini-redis-cli.exe")
+        // .arg("get")
+        // .arg(&channel_id.to_string())
+        // .output()
+        // .expect("Ошибка при запуске процесса");
+
+        // if output.stdout.is_empty() {
+        //     return Ok(false);
+        // };
+        // let result = String::from_utf8_lossy(&output.stdout);
+        // println!("GOT RESULT: {}", &result);
+        let mut client = {
+            match MiniClient::connect(&MINIREDIS_URL).await {
+                Ok(client) => client,
+                Err(err) => return Err(err.to_string())
+            }
+        };
+        if let Ok(Some(value)) = client.get(&channel_id.to_string()).await {
+            if let Ok(string) = std::str::from_utf8(&value) {
+                if string == "nil" {
+                    return Ok(false);
+                };
+                println!("\"{}\"", &string);
+                // return Ok(string);
+            };
+        }
+        return Ok(false);
+    }
+}
 
 impl TypeMapKey for MonitoredChannels {
     type Value = Arc<RwLock<HashSet<ChannelId>>>;

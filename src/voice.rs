@@ -6,10 +6,14 @@ use serenity::model::channel::{ Message, Channel };
 
 use super::{ MonitoredChannels };
 
+
+const CHANNEL_ID: i64 = 1263582863413088266;
+
+
 pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = new.channel_id {
         // Убедитесь, что это нужный вам канал, для которого нужно создать новый
-        if channel_id == ChannelId::new(1262847960392400976 as u64) {
+        if channel_id == ChannelId::new(CHANNEL_ID as u64) {
             if let Some(guild_id) = new.guild_id {
                 if let Some(member) = &new.member {
                     let user_id = member.user.id;
@@ -48,13 +52,18 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
 pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = &new.channel_id {
-        let monitored_channels_lock = {
-            let data_read = ctx.data.read().await;
-            data_read.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
-        };
-        let is_monitored: bool = {
-            let monitored_channels = monitored_channels_lock.read().await;
-            monitored_channels.contains(&channel_id)
+        // let monitored_channels_lock = {
+        //     let data_read = ctx.data.read().await;
+        //     data_read.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
+        // };
+        // let is_monitored: bool = {
+        //     let monitored_channels = monitored_channels_lock.read().await;
+        //     monitored_channels.contains(&channel_id)
+        // };
+
+        let is_monitored = match MonitoredChannels.check(&channel_id.get()).await {
+            Ok(result) => result,
+            Err(err) => { println!("Err: {}", err); return;}
         };
         
         if is_monitored == true {
@@ -68,11 +77,6 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
 
                                 let monitored_channels_lock = {
                                     let data_read = ctx.data.read();
-                            
-                                    // Since the CommandCounter Value is wrapped in an Arc, cloning will not duplicate the
-                                    // data, instead the reference is cloned.
-                                    // We wrap every value on in an Arc, as to keep the data lock open for the least time
-                                    // possible, to again, avoid deadlocking it.
                                     data_read.await.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
                                 };
                                 {
