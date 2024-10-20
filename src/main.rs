@@ -12,10 +12,13 @@ use serenity::model::channel::Message;
 // use tokio::io::{ AsyncWriteExt, AsyncReadExt };
 
 use dotenv::dotenv;
+use bytes::Bytes;
 
 use std::env;
 use std::collections::HashSet;
+use std::num::ParseIntError;
 use std::sync::Arc;
+use std::time::Duration;
 // use std::process::Command;
 
 // use mini_redis::bin::client;
@@ -27,59 +30,47 @@ use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
 
 
 const MINIREDIS_URL: &str = "127.0.0.1:6379";
+const MONITORED_STR_VALUE: &str = "MONITORED";
 
 struct Handler;
 
 struct MonitoredChannels;
 
 impl MonitoredChannels {
-    async fn check(&self, channel_id: &u64) -> Result<bool, String> {
-        // let mut stream = TcpStream::connect(REDIS_URL).await.expect("Cannot open a connection");
-
-        // // Отправка данных
-        // match stream.write_all(&channel_id.to_be_bytes()).await {
-        //     Ok(_) => (),
-        //     Err(err) => return Err(err.to_string())
-        // };
-    
-        // // Чтение ответа
-        // let mut buffer = Vec::new();
-        // match stream.read_to_end(&mut buffer).await {
-        //     Ok(_) => (),
-        //     Err(err) => return Err(err.to_string())
-        // };
-
-        // let s = match std::str::from_utf8(&buffer) {
-        //     Ok(v) => v,
-        //     Err(err) => return  Err(err.to_string())
-        // };
-        // let output = Command::new("mini-redis-cli.exe")
-        // .arg("get")
-        // .arg(&channel_id.to_string())
-        // .output()
-        // .expect("Ошибка при запуске процесса");
-
-        // if output.stdout.is_empty() {
-        //     return Ok(false);
-        // };
-        // let result = String::from_utf8_lossy(&output.stdout);
-        // println!("GOT RESULT: {}", &result);
+    async fn get(&self, channel_id: &String) -> Result<Option<String>, String> {
         let mut client = {
             match MiniClient::connect(&MINIREDIS_URL).await {
                 Ok(client) => client,
-                Err(err) => return Err(err.to_string())
+                Err(err) => { println!("{err:?}"); return Err(err.to_string()) }
             }
         };
-        if let Ok(Some(value)) = client.get(&channel_id.to_string()).await {
+        if let Ok(Some(value)) = client.get(&channel_id).await {
             if let Ok(string) = std::str::from_utf8(&value) {
                 if string == "nil" {
-                    return Ok(false);
+                    return Ok(None);
                 };
-                println!("\"{}\"", &string);
-                // return Ok(string);
+                println!("GET: \"{}\"", &string);
+                return Ok(Some(String::from(string)));
             };
         }
-        return Ok(false);
+        return Ok(None);
+    }
+
+    async fn set(&self, key: &str, value: Bytes, expires: Option<u64>) -> Option<&str> {
+        let mut client = {
+            match MiniClient::connect(&MINIREDIS_URL).await {
+                Ok(client) => client,
+                Err(err) => { println!("{err:?}"); return None; }
+            }
+        };
+
+        if let Some(expire) = expires {
+            let _ = client.set_expires(&key, value, Duration::from_secs(expire)).await;
+            return Some("OK");
+        }
+
+        let _ = client.set(&key, value).await;
+        return Some("OK");
     }
 }
 

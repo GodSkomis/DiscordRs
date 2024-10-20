@@ -4,46 +4,56 @@ use serenity::builder::{ CreateChannel };
 use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
 
-use super::{ MonitoredChannels };
+use super::{ MonitoredChannels, MONITORED_STR_VALUE };
 
 
-const CHANNEL_ID: i64 = 1263582863413088266;
+// const CHANNEL_ID: u64 = 1263582863413088266;
 
+fn _check_create_permissions(v: &Vec<&str>, value: &str) -> bool {
+    if v.len() < 2 {
+        return false;
+    }
+    if v[0] == value {
+        return true;
+    }
+    false
+}
 
 pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = new.channel_id {
-        // Убедитесь, что это нужный вам канал, для которого нужно создать новый
-        if channel_id == ChannelId::new(CHANNEL_ID as u64) {
-            if let Some(guild_id) = new.guild_id {
-                if let Some(member) = &new.member {
-                    let user_id = member.user.id;
-                    let user_name = &member.user.name;
-
-                    // Создаем новый голосовой канал с именем пользователя
-                    let builder = CreateChannel::new(user_name)
-                        .category(ChannelId::new(946552116548362301 as u64))
-                            .kind(serenity::model::channel::ChannelType::Voice);
-                    let channel_result = guild_id.create_channel(&ctx.http, builder).await;
-
-                    if let Ok(channel) = channel_result {
-                        // Переносим пользователя в созданный канал
-                        if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
-                            println!("Error moving user: {:?}", why);
-                        }
-                        let monitored_channels_lock = {
-                            let data_read = ctx.data.read();
-                    
-                            // Since the CommandCounter Value is wrapped in an Arc, cloning will not duplicate the
-                            // data, instead the reference is cloned.
-                            // We wrap every value on in an Arc, as to keep the data lock open for the least time
-                            // possible, to again, avoid deadlocking it.
-                            data_read.await.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
-                        };
-                        {
-                            let mut monitored_channels = monitored_channels_lock.write().await;
-                            monitored_channels.insert(channel.id);
-                        };
+        let is_monitored:bool = match MonitoredChannels.get(&channel_id.to_string()).await {
+            Ok(result) => match result {
+                    Some(string) => {
+                        let words: Vec<&str> = string.split(' ').collect();
+                        _check_create_permissions(&words, &channel_id.to_string())
                     }
+                    None => false
+                },
+            Err(_) => return
+        };
+        if is_monitored == false {
+            return;
+        }
+        if let Some(guild_id) = new.guild_id {
+            if let Some(member) = &new.member {
+                let user_id = member.user.id;
+                let user_name = &member.user.name;
+
+                // Создаем новый голосовой канал с именем пользователя
+                let builder = CreateChannel::new(user_name)
+                    .category(ChannelId::new(946552116548362301 as u64))
+                        .kind(serenity::model::channel::ChannelType::Voice);
+                let channel_result = guild_id.create_channel(&ctx.http, builder).await;
+
+                if let Ok(channel) = channel_result {
+                    // Переносим пользователя в созданный канал
+                    if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
+                        println!("Error moving user: {:?}", why);
+                        return;
+                    }
+
+                    let _  = MonitoredChannels.set(&channel.id.get().to_string(), bytes::Bytes::copy_from_slice(MONITORED_STR_VALUE.as_bytes()), Some(24 * 60 * 60)).await;
+                    
                 }
             }
         }
@@ -52,43 +62,31 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
 pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = &new.channel_id {
-        // let monitored_channels_lock = {
-        //     let data_read = ctx.data.read().await;
-        //     data_read.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
-        // };
-        // let is_monitored: bool = {
-        //     let monitored_channels = monitored_channels_lock.read().await;
-        //     monitored_channels.contains(&channel_id)
-        // };
-
-        let is_monitored = match MonitoredChannels.check(&channel_id.get()).await {
-            Ok(result) => result,
+        let is_monitored = match MonitoredChannels.get(&channel_id.get().to_string()).await {
+            Ok(result) => match result {
+                Some(string) => string == MONITORED_STR_VALUE,
+                None => false
+        },
             Err(err) => { println!("Err: {}", err); return;}
         };
         
-        if is_monitored == true {
-            match channel_id.to_channel(&ctx.http).await {
-                Ok(channel) => {
-                    // if let Some(members) = &channel.members(&ctx.http).await.unwrap() {
-                    match &channel.clone().guild().unwrap().members(&ctx.cache) {
-                        Ok(members) => {
-                            if members.len() == 0 {
-                                let _ = channel.delete(&ctx.http).await;
+        println!("DELETE?: {}, channel: {}", is_monitored, channel_id);
+        if is_monitored == false {
+            return;
+        }
 
-                                let monitored_channels_lock = {
-                                    let data_read = ctx.data.read();
-                                    data_read.await.get::<MonitoredChannels>().expect("Expected MonitoredChannels in TypeMap.").clone()
-                                };
-                                {
-                                    let mut monitored_channels = monitored_channels_lock.write().await;
-                                    monitored_channels.remove(channel_id);
-                                };
-                            };
-                        },
-                    Err(err) => println!("Err: {}", err)
-            }},
+        match channel_id.to_channel(&ctx.http).await {
+            Ok(channel) => {
+                // if let Some(members) = &channel.members(&ctx.http).await.unwrap() {
+                match &channel.clone().guild().unwrap().members(&ctx.cache) {
+                    Ok(members) => {
+                        if members.len() == 0 {
+                            let _ = channel.delete(&ctx.http).await;
+                        };
+                    },
                 Err(err) => println!("Err: {}", err)
-            }
+        }},
+            Err(err) => println!("Err: {}", err)
         }
     }
 }
@@ -120,8 +118,9 @@ impl VoiceProccessing {
         if !self.check_channel(ctx, msg, &category_id).await {
             return format!("Wrong category id: {}", category_id);
         }
-        println!("Channel id: {}, Category id: {}", channel_id, category_id);
-        return format!("Channel id: {}, Category id: {}", channel_id, category_id);
+        let data = format!("{} {}", channel_id, category_id);
+        MonitoredChannels.set(&channel_id.get().to_string(), bytes::Bytes::copy_from_slice(data.as_bytes()), None).await;
+        return format!("Record was created! channel id: {}, category id: {}", channel_id, category_id);
     }
 
     async fn check_channel(&self, ctx: &Context, msg: &Message, channel_id: &ChannelId) -> bool {
