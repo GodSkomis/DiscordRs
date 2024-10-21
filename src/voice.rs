@@ -51,7 +51,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                         return;
                     }
 
-                    MonitoredAutoRoom::new(pool, channel_id.get() as i64).await;
+                    MonitoredAutoRoom::new(pool, channel.id.get() as i64).await;
                     
                 }
             }
