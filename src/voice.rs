@@ -1,3 +1,4 @@
+use serenity::all::{PermissionOverwrite, PermissionOverwriteType, Permissions};
 use serenity::model::voice::VoiceState;
 use serenity::model::id::ChannelId;
 use serenity::builder::CreateChannel;
@@ -45,10 +46,33 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
 
                 if let Ok(channel) = channel_result {
+                    // Устанавливаем разрешения для пользователя
+                    let permissions = PermissionOverwrite {
+                        allow: Permissions::VIEW_CHANNEL
+                            | Permissions::SEND_MESSAGES
+                            | Permissions::MANAGE_CHANNELS
+                            | Permissions::MUTE_MEMBERS
+                            | Permissions::DEAFEN_MEMBERS,
+                        deny: Permissions::empty(),
+                        kind: PermissionOverwriteType::Member(user_id),
+                    };
+                    if let Err(err) = channel.create_permission(&ctx.http, permissions).await {
+                        println!(
+                            "Failed to grant channel({:?}) permissions to the user({:?}). Error: \"{:?}\"",
+                            &channel.id.get(),
+                            &user_id.get(),
+                            &err
+                        );
+                    }
+
                     // Переносим пользователя в созданный канал
                     if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
-                        println!("Error moving user: {:?}", why);
-                        return;
+                        println!(
+                            "Failed to move the user({:?}) to the new voice channel({:?}). Error: \"{:?}\"",
+                            &user_id.get(),
+                            &channel.id.get(),
+                            &why
+                        );
                     }
 
                     MonitoredAutoRoom::new(pool, channel.id.get() as i64).await;
