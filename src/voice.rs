@@ -1,40 +1,34 @@
 use serenity::model::voice::VoiceState;
 use serenity::model::id::ChannelId;
-use serenity::builder::{ CreateChannel };
+use serenity::builder::CreateChannel;
 use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
 
-use super::{ MonitoredChannels, MONITORED_STR_VALUE };
+use crate::sql::{AutoRoom, DbPool, MonitoredAutoRoom};
+
 use super::bitrate::get_bitrate;
 
 
-// const CHANNEL_ID: u64 = 1263582863413088266;
-
-fn _check_create_permissions(v: &Vec<&str>, value: &str) -> bool {
-    if v.len() < 2 {
-        return false;
-    }
-    if v[0] == value {
-        return true;
-    }
-    false
-}
-
 pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = new.channel_id {
-        let is_monitored:bool = match MonitoredChannels.get(&channel_id.to_string()).await {
-            Ok(result) => match result {
-                    Some(string) => {
-                        let words: Vec<&str> = string.split(' ').collect();
-                        _check_create_permissions(&words, &channel_id.to_string())
-                    }
-                    None => false
-                },
-            Err(_) => return
+
+        let data = ctx.data.read().await;
+        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
+
+        let autoroom_result = AutoRoom::get_by_channel_id(pool, channel_id.get() as i64).await;
+        let autoroom = match autoroom_result{
+            Ok(Some(autoroom)) => {
+                autoroom
+            }
+            Ok(None) => {
+                return;
+            }
+            Err(e) => {
+                println!("Error fetching autoroom: {:?}", e);
+                return;
+            }
         };
-        if is_monitored == false {
-            return;
-        }
+            
         if let Some(guild_id) = new.guild_id {
             // Get max available server bitrate
             let max_bitrate = get_bitrate(&guild_id.to_guild_cached(&ctx.cache).unwrap().premium_tier);
@@ -44,8 +38,8 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 let user_name = &member.user.name;
 
                 // Создаем новый голосовой канал с именем пользователя
-                let builder = CreateChannel::new(user_name)
-                    .category(ChannelId::new(946552116548362301 as u64))
+                let builder = CreateChannel::new(format!("{}`s {}", user_name, autoroom.suffix))
+                    .category(ChannelId::new(autoroom.category_id))
                         .kind(serenity::model::channel::ChannelType::Voice)
                             .bitrate(max_bitrate);
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
@@ -57,7 +51,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                         return;
                     }
 
-                    let _  = MonitoredChannels.set(&channel.id.get().to_string(), bytes::Bytes::copy_from_slice(MONITORED_STR_VALUE.as_bytes()), Some(24 * 60 * 60)).await;
+                    MonitoredAutoRoom::new(pool, channel_id.get() as i64).await;
                     
                 }
             }
@@ -67,18 +61,12 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
 pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = &new.channel_id {
-        let is_monitored = match MonitoredChannels.get(&channel_id.get().to_string()).await {
-            Ok(result) => match result {
-                Some(string) => string == MONITORED_STR_VALUE,
-                None => false
-        },
-            Err(err) => { println!("Err: {}", err); return;}
-        };
-        
-        println!("DELETE?: {}, channel: {}", is_monitored, channel_id);
-        if is_monitored == false {
+        let data = ctx.data.read().await;
+        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
+        println!("RM: {}", channel_id.get() as i64);
+        if !MonitoredAutoRoom::exists(pool, channel_id.get() as i64).await {
             return;
-        }
+        };
 
         match channel_id.to_channel(&ctx.http).await {
             Ok(channel) => {
@@ -86,7 +74,10 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
                 match &channel.clone().guild().unwrap().members(&ctx.cache) {
                     Ok(members) => {
                         if members.len() == 0 {
-                            let _ = channel.delete(&ctx.http).await;
+                            let _ = match channel.delete(&ctx.http).await {
+                                Ok(_) => {let _ = MonitoredAutoRoom {channel_id: channel_id.get()}.remove(pool).await;},
+                                Err(_) => {},
+                            };
                         };
                     },
                 Err(err) => println!("Err: {}", err)
@@ -115,16 +106,22 @@ impl VoiceProccessing {
     }
 
     async fn proccess_add(&self, ctx: &Context, msg: &Message, commands: Vec<&str>) -> String {
+        let data = ctx.data.read().await;
+        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
         let channel_id = ChannelId::new(commands[2].parse::<u64>().unwrap());
         let category_id = ChannelId::new(commands[3].parse::<u64>().unwrap());
+        let suffix = match commands.get(4) {
+            Some(suffix) => suffix,
+            None => "room",
+        };
         if !self.check_channel(ctx, msg, &channel_id).await {
             return format!("Wrong channel id: {}", channel_id);
         }
         if !self.check_channel(ctx, msg, &category_id).await {
             return format!("Wrong category id: {}", category_id);
         }
-        let data = format!("{} {}", channel_id, category_id);
-        MonitoredChannels.set(&channel_id.get().to_string(), bytes::Bytes::copy_from_slice(data.as_bytes()), None).await;
+        let autoroom = AutoRoom { channel_id: channel_id.get(), category_id: category_id.get(), suffix: suffix.to_string() };
+        autoroom.create(pool).await;
         return format!("Record was created! channel id: {}, category id: {}", channel_id, category_id);
     }
 

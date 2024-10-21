@@ -1,83 +1,24 @@
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::model::gateway::Ready;
-use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::GatewayIntents;
-use serenity::prelude::RwLock;
-use serenity::prelude::TypeMapKey;
 use serenity::model::channel::Message;
-
-// use tokio::net::TcpStream;
-// use tokio::io::{ AsyncWriteExt, AsyncReadExt };
-
+use sqlx::migrate::MigrateDatabase;
+use sqlx::sqlite::SqlitePool;
 use dotenv::dotenv;
-use bytes::Bytes;
-
+use sqlx::Sqlite;
 use std::env;
-use std::collections::HashSet;
-use std::num::ParseIntError;
-use std::sync::Arc;
-use std::time::Duration;
-// use std::process::Command;
-
-// use mini_redis::bin::client;
-use mini_redis::{ Client as MiniClient };
 
 mod voice;
 mod bitrate;
+mod sql;
 
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
+use sql::{create_tables, DbPool};
 
-
-const MINIREDIS_URL: &str = "127.0.0.1:6379";
-const MONITORED_STR_VALUE: &str = "MONITORED";
 
 struct Handler;
-
-struct MonitoredChannels;
-
-impl MonitoredChannels {
-    async fn get(&self, channel_id: &String) -> Result<Option<String>, String> {
-        let mut client = {
-            match MiniClient::connect(&MINIREDIS_URL).await {
-                Ok(client) => client,
-                Err(err) => { println!("{err:?}"); return Err(err.to_string()) }
-            }
-        };
-        if let Ok(Some(value)) = client.get(&channel_id).await {
-            if let Ok(string) = std::str::from_utf8(&value) {
-                if string == "nil" {
-                    return Ok(None);
-                };
-                println!("GET: \"{}\"", &string);
-                return Ok(Some(String::from(string)));
-            };
-        }
-        return Ok(None);
-    }
-
-    async fn set(&self, key: &str, value: Bytes, expires: Option<u64>) -> Option<&str> {
-        let mut client = {
-            match MiniClient::connect(&MINIREDIS_URL).await {
-                Ok(client) => client,
-                Err(err) => { println!("{err:?}"); return None; }
-            }
-        };
-
-        if let Some(expire) = expires {
-            let _ = client.set_expires(&key, value, Duration::from_secs(expire)).await;
-            return Some("OK");
-        }
-
-        let _ = client.set(&key, value).await;
-        return Some("OK");
-    }
-}
-
-impl TypeMapKey for MonitoredChannels {
-    type Value = Arc<RwLock<HashSet<ChannelId>>>;
-}
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -99,13 +40,25 @@ impl EventHandler for Handler {
             remove_proccessing(&ctx, &voice_state).await;
         };
     }
-
 }
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let db_path = env::var("DISCORD_DB").expect("Expected a db path in the environment");
+    if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
+        println!("Creating database {}", &db_path);
+        match Sqlite::create_database(&db_path).await {
+            Ok(_) => println!("Create db success"),
+            Err(error) => panic!("error: {}", error),
+        }
+    } else {
+        println!("Database already exists");
+    }
+    let pool = SqlitePool::connect(&db_path).await.expect("Failed to connect to the database");
+    create_tables(&pool).await;
+
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::DIRECT_MESSAGES
@@ -116,12 +69,8 @@ async fn main() {
         .expect("Error creating client");
 
         {
-            // Open the data lock in write mode, so keys can be inserted to it.
             let mut data = client.data.write().await;
-    
-            // The CommandCounter Value has the type: Arc<RwLock<HashMap<String, u64>>>
-            // So, we have to insert the same type to it.
-            data.insert::<MonitoredChannels>(Arc::new(RwLock::new(HashSet::default())));
+            data.insert::<DbPool>(pool);
         }
 
     if let Err(why) = client.start().await {
