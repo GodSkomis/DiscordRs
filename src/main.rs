@@ -25,6 +25,7 @@ use std::time::Duration;
 use mini_redis::{ Client as MiniClient };
 
 mod voice;
+mod bitrate;
 
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
 

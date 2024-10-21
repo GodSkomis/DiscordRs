@@ -5,6 +5,7 @@ use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
 
 use super::{ MonitoredChannels, MONITORED_STR_VALUE };
+use super::bitrate::get_bitrate;
 
 
 // const CHANNEL_ID: u64 = 1263582863413088266;
@@ -35,6 +36,9 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
             return;
         }
         if let Some(guild_id) = new.guild_id {
+            // Get max available server bitrate
+            let max_bitrate = get_bitrate(&guild_id.to_guild_cached(&ctx.cache).unwrap().premium_tier);
+
             if let Some(member) = &new.member {
                 let user_id = member.user.id;
                 let user_name = &member.user.name;
@@ -42,7 +46,8 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 // Создаем новый голосовой канал с именем пользователя
                 let builder = CreateChannel::new(user_name)
                     .category(ChannelId::new(946552116548362301 as u64))
-                        .kind(serenity::model::channel::ChannelType::Voice);
+                        .kind(serenity::model::channel::ChannelType::Voice)
+                            .bitrate(max_bitrate);
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
 
                 if let Ok(channel) = channel_result {
