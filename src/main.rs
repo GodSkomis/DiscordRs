@@ -15,7 +15,7 @@ mod bitrate;
 mod sql;
 
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
-use sql::{create_tables, DbPool};
+use sql::prelude::*;
 
 
 struct Handler;

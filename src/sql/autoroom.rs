@@ -1,4 +1,3 @@
-use serenity::prelude::TypeMapKey;
 use sqlx::{Error, FromRow, Pool, Row, Sqlite, SqlitePool};
 
 
@@ -83,42 +82,39 @@ impl MonitoredAutoRoom {
     }
 }
 
-pub struct DbPool;
+mod table_builder {
+    use sqlx::{Pool, Sqlite};
+    use super::{AutoRoom, MonitoredAutoRoom};
 
-impl TypeMapKey for DbPool {
-    type Value = SqlitePool;
-}
-
-pub async fn create_tables(pool : &Pool<Sqlite>) {
-    create_autoroom(pool).await;
-    create_monitored_autoroom(pool).await;
-}
-
-async fn create_autoroom(pool : &Pool<Sqlite>) {
-    sqlx::query(
-        r#"
-            CREATE TABLE IF NOT EXISTS autoroom (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                channel_id BIGINT UNIQUE NOT NULL,
-                category_id BIGINT NOT NULL,
-                suffix VARCHAR(16) NOT NULL
-        )
-        "#,
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create autoroom table");
-}
-
-async fn create_monitored_autoroom(pool : &Pool<Sqlite>) {
-    sqlx::query(
-        r#"
-            CREATE TABLE IF NOT EXISTS monitored_autoroom (
-                channel_id BIGINT PRIMARY KEY
-        )
-        "#,
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create autoroom table");
+    impl AutoRoom {
+        pub async fn create_table(pool : &Pool<Sqlite>) {
+            sqlx::query(
+                r#"
+                    CREATE TABLE IF NOT EXISTS autoroom (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        channel_id BIGINT UNIQUE NOT NULL,
+                        category_id BIGINT NOT NULL,
+                        suffix VARCHAR(16) NOT NULL
+                )
+                "#,
+            )
+            .execute(pool)
+            .await
+            .expect("Failed to create autoroom table");
+        }
+    }
+    impl MonitoredAutoRoom {
+        pub async fn create_table(pool : &Pool<Sqlite>) {
+            sqlx::query(
+                r#"
+                    CREATE TABLE IF NOT EXISTS monitored_autoroom (
+                        channel_id BIGINT PRIMARY KEY
+                )
+                "#,
+            )
+            .execute(pool)
+            .await
+            .expect("Failed to create autoroom table");
+        }
+    }
 }

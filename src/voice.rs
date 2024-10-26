@@ -5,7 +5,8 @@ use serenity::builder::CreateChannel;
 use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
 
-use crate::sql::{AutoRoom, DbPool, MonitoredAutoRoom};
+use super::sql::DbPool;
+use super::sql::autoroom::{AutoRoom, MonitoredAutoRoom};
 
 use super::bitrate::get_bitrate;
 
