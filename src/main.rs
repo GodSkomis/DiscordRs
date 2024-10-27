@@ -1,3 +1,4 @@
+use poise::PrefixFrameworkOptions;
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::model::gateway::Ready;
@@ -7,18 +8,21 @@ use serenity::model::channel::Message;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePool;
 use dotenv::dotenv;
-use sqlx::Sqlite;
+use sqlx::{Pool, Sqlite};
 use std::env;
 
 mod voice;
 mod bitrate;
 mod sql;
+mod commands;
+pub mod services;
 
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
 use sql::prelude::*;
 
 
 struct Handler;
+
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -56,15 +60,19 @@ async fn main() {
     } else {
         println!("Database already exists");
     }
+
     let pool = SqlitePool::connect(&db_path).await.expect("Failed to connect to the database");
     create_tables(&pool).await;
+    let commands_pool = SqlitePool::connect(&db_path).await.expect("Failed to connect to the database");
 
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
+
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
+        .framework(commands::generate_commands_framework(commands_pool).await)
         .await
         .expect("Error creating client");
 

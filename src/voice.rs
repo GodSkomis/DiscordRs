@@ -1,9 +1,10 @@
-use serenity::all::{PermissionOverwrite, PermissionOverwriteType, Permissions};
 use serenity::model::voice::VoiceState;
 use serenity::model::id::ChannelId;
 use serenity::builder::CreateChannel;
 use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
+
+use crate::services::autoroom::grant_owner_privileges;
 
 use super::sql::DbPool;
 use super::sql::autoroom::{AutoRoom, MonitoredAutoRoom};
@@ -48,22 +49,8 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
                 if let Ok(channel) = channel_result {
                     // Устанавливаем разрешения для пользователя
-                    let permissions = PermissionOverwrite {
-                        allow: Permissions::VIEW_CHANNEL
-                            | Permissions::SEND_MESSAGES
-                            | Permissions::MANAGE_CHANNELS
-                            | Permissions::MUTE_MEMBERS
-                            | Permissions::DEAFEN_MEMBERS,
-                        deny: Permissions::empty(),
-                        kind: PermissionOverwriteType::Member(user_id),
-                    };
-                    if let Err(err) = channel.create_permission(&ctx.http, permissions).await {
-                        println!(
-                            "Failed to grant channel({:?}) permissions to the user({:?}). Error: \"{:?}\"",
-                            &channel.id.get(),
-                            &user_id.get(),
-                            &err
-                        );
+                    if let Err(_) = grant_owner_privileges(&ctx.http, &channel.id, &user_id).await {
+                        channel.delete(&ctx.http).await;
                     }
 
                     // Переносим пользователя в созданный канал
@@ -76,7 +63,10 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                         );
                     }
 
-                    MonitoredAutoRoom::new(pool, channel.id.get() as i64).await;
+                    MonitoredAutoRoom::new(
+                        pool, channel.id.get() as i64,
+                        user_id.get() as i64
+                    ).await;
                     
                 }
             }
@@ -100,7 +90,7 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
                     Ok(members) => {
                         if members.len() == 0 {
                             let _ = match channel.delete(&ctx.http).await {
-                                Ok(_) => {let _ = MonitoredAutoRoom {channel_id: channel_id.get()}.remove(pool).await;},
+                                Ok(_) => {let _ = MonitoredAutoRoom::remove(pool, channel_id.get() as i64).await;},
                                 Err(_) => {},
                             };
                         };

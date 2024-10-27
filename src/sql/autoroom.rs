@@ -11,6 +11,7 @@ pub struct AutoRoom {
 #[derive(Debug, FromRow)]
 pub struct MonitoredAutoRoom {
     pub channel_id: u64,
+    pub owner_id: u64
 }
 
 impl AutoRoom {
@@ -36,7 +37,14 @@ impl AutoRoom {
             .bind(self.suffix.clone())
             .execute(pool)
             .await
-            .expect("Failed to insert monitored autoroom");
+            .expect(
+                &format!(
+                    "Failed to insert AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})",
+                    self.channel_id,
+                    self.category_id,
+                    self.suffix
+                )
+            );
     }
 }
 
@@ -61,10 +69,10 @@ impl MonitoredAutoRoom {
         }
     }
 
-    pub async fn remove(&self, pool: &Pool<Sqlite>) -> Result<bool, sqlx::Error> {
+    pub async fn remove(pool: &Pool<Sqlite>, channel_id: i64) -> Result<bool, sqlx::Error> {
         let query = "DELETE FROM monitored_autoroom WHERE channel_id = ?";
         let result = sqlx::query(query)
-        .bind(self.channel_id as i64)
+        .bind(channel_id)
         .execute(pool)
         .await?;
 
@@ -72,13 +80,33 @@ impl MonitoredAutoRoom {
         Ok(result.rows_affected() > 0)
     }
     
-    pub async fn new(pool: &Pool<Sqlite>, channel_id: i64) {
-        let query = "INSERT INTO monitored_autoroom (channel_id) VALUES (?)";
+    pub async fn new(pool: &Pool<Sqlite>, channel_id: i64, owner_id: i64) {
+        let query = "INSERT INTO monitored_autoroom (channel_id, owner_id) VALUES (?, ?)";
         sqlx::query(query)
             .bind(channel_id)
+            .bind(owner_id)
             .execute(pool)
             .await
-            .expect("Failed to insert monitored autoroom");
+            .expect(
+                &format!(
+                    "Failed to insert MonitoredAutoRoom, CHANNEL({}) OWNER({})",
+                    channel_id,
+                    owner_id
+                )
+            );
+    }
+
+    pub async fn get_by_owner_id(pool: &SqlitePool, owner_id: i64) -> Result<Option<Self>, Error> {
+        match sqlx::query_as::<_, Self>("SELECT channel_id, owner_id from monitored_autoroom WHERE owner_id = ?")
+            .bind(owner_id)
+            .fetch_one(pool)
+            .await {
+            Ok(monitored_autoroom) => Ok(Some(monitored_autoroom)),
+            Err(err) => match err {
+                sqlx::Error::RowNotFound => Ok(None),
+                _ => Err(err),
+            },
+        }
     }
 }
 
@@ -108,7 +136,8 @@ mod table_builder {
             sqlx::query(
                 r#"
                     CREATE TABLE IF NOT EXISTS monitored_autoroom (
-                        channel_id BIGINT PRIMARY KEY
+                        channel_id BIGINT PRIMARY KEY,
+                        owner_id BIGINT NOT NULL
                 )
                 "#,
             )
