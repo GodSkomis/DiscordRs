@@ -1,15 +1,10 @@
-use poise::PrefixFrameworkOptions;
-use serenity::async_trait;
-use serenity::client::{Client, Context, EventHandler};
-use serenity::model::gateway::Ready;
-use serenity::model::voice::VoiceState;
-use serenity::prelude::GatewayIntents;
+use anyhow::Context as _;
+use serenity::{all::VoiceState, async_trait};
 use serenity::model::channel::Message;
-use sqlx::migrate::MigrateDatabase;
-use sqlx::sqlite::SqlitePool;
-use dotenv::dotenv;
-use sqlx::{Pool, Sqlite};
-use std::env;
+use serenity::model::gateway::Ready;
+use serenity::prelude::*;
+use shuttle_runtime::SecretStore;
+// use tracing::{error, info};
 
 mod voice;
 mod bitrate;
@@ -17,12 +12,11 @@ mod sql;
 mod commands;
 pub mod services;
 
+use sqlx::PgPool;
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
-use sql::prelude::*;
-
+use sql::{prelude::*, SerenityPool};
 
 struct Handler;
-
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -46,42 +40,44 @@ impl EventHandler for Handler {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    dotenv().ok();
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    let db_path = env::var("DISCORD_DB").expect("Expected a db path in the environment");
-    if !Sqlite::database_exists(&db_path).await.unwrap_or(false) {
-        println!("Creating database {}", &db_path);
-        match Sqlite::create_database(&db_path).await {
-            Ok(_) => println!("Create db success"),
-            Err(error) => panic!("error: {}", error),
-        }
-    } else {
-        println!("Database already exists");
-    }
+#[shuttle_runtime::main]
+async fn serenity(
+    #[shuttle_runtime::Secrets] secrets: SecretStore,
+    #[shuttle_shared_db::Postgres] db: PgPool
+) -> shuttle_serenity::ShuttleSerenity {
+    // Get the discord token set in `Secrets.toml`
+    let token = secrets
+        .get("DISCORD_TOKEN")
+        .context("'DISCORD_TOKEN' was not found")?;
 
-    let pool = SqlitePool::connect(&db_path).await.expect("Failed to connect to the database");
-    create_tables(&pool).await;
-    let commands_pool = SqlitePool::connect(&db_path).await.expect("Failed to connect to the database");
+    println!("Drop table has begun");
+    sqlx::query("DROP table monitored_autoroom").execute(&db).await.expect("Drop table 'monitored_autoroom' unsuccessful");
+    println!("Drop table has been completed");
 
+    println!("Table creation has begun");
+    create_tables(&db).await;
+    println!("Table creation has been completed");
+
+    // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_VOICE_STATES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+            | GatewayIntents::DIRECT_MESSAGES
+                | GatewayIntents::MESSAGE_CONTENT;
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
-        .framework(commands::generate_commands_framework(commands_pool).await)
+        .framework(commands::generate_commands_framework(db.clone()).await)
         .await
         .expect("Error creating client");
 
-        {
-            let mut data = client.data.write().await;
-            data.insert::<DbPool>(pool);
-        }
+    {
+        let mut data = client.data.write().await;
+        data.insert::<SerenityPool>(db.clone());
+    }
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }
+
+    Ok(client.into())
 }
