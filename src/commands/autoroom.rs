@@ -1,5 +1,5 @@
 use poise::serenity_prelude as serenity;
-use ::serenity::all::ChannelId;
+use ::serenity::all::{ChannelId, Mentionable};
 
 use crate::{services::autoroom::grant_guest_privileges, MonitoredAutoRoom};
 
@@ -16,15 +16,12 @@ pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
 #[poise::command(slash_command)]
 pub async fn invite(
     ctx: CommandContext<'_>,
-    #[description = "Invite a user to the apparts"] user: Option<serenity::User>,
+    #[description = "Invite a user to the apparts"] user: serenity::User,
+    #[description = "Notify a user"] #[flag] notify: bool,
 ) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
 
     let author = ctx.author();
-    let invited_user = match user.as_ref() {
-        Some(user) => user,
-        None => return Err("Please specify the user you want to invite".into())
-    };
     let err_msg = format!("The connected voice channel was not found");
     let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author.id.get() as i64).await {
         Ok(option) => match option {
@@ -35,12 +32,17 @@ pub async fn invite(
     };
 
     let channel_id = ChannelId::new(monitored_autoroom.channel_id);
-    grant_guest_privileges(&ctx.http(), &channel_id, &invited_user.id).await?;
+    grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await?;
 
+    let user_info = match notify {
+        true => user.mention().to_string(),
+        false => user.name,
+    };
+    
     ctx.say(
         &format!(
             "{} has been successfully invited",
-            invited_user.name
+            &user_info
         )
     ).await?;
 
