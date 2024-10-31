@@ -1,4 +1,4 @@
-use sqlx::{Pool, Sqlite};
+use sqlx::PgPool;
 
 pub mod autoroom;
 
@@ -7,10 +7,10 @@ pub type CommandError = Box<dyn std::error::Error + Send + Sync>;
 pub type CommandContext<'a> = poise::Context<'a, CommandData, CommandError>;
 
 pub struct CommandData {
-    pool: Pool<Sqlite>
+    pool: PgPool
 }
 
-pub async fn generate_commands_framework(pool: Pool<Sqlite>) -> poise::Framework<CommandData, CommandError> {
+pub async fn generate_commands_framework(pool: PgPool) -> poise::Framework<CommandData, CommandError> {
     let framework: poise::Framework<CommandData, CommandError> = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             // prefix_options: PrefixFrameworkOptions {

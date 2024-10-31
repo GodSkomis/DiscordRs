@@ -6,7 +6,7 @@ use serenity::model::channel::{ Message, Channel };
 
 use crate::services::autoroom::grant_owner_privileges;
 
-use super::sql::DbPool;
+use super::sql::SerenityPool;
 use super::sql::autoroom::{AutoRoom, MonitoredAutoRoom};
 
 use super::bitrate::get_bitrate;
@@ -16,7 +16,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = new.channel_id {
 
         let data = ctx.data.read().await;
-        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
+        let pool = data.get::<SerenityPool>().expect("Failed to get DB pool");
 
         let autoroom_result = AutoRoom::get_by_channel_id(pool, channel_id.get() as i64).await;
         let autoroom = match autoroom_result{
@@ -42,7 +42,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
                 // Создаем новый голосовой канал с именем пользователя
                 let builder = CreateChannel::new(format!("{}`s {}", user_name, autoroom.suffix))
-                    .category(ChannelId::new(autoroom.category_id))
+                    .category(ChannelId::new(autoroom.category_id as u64))
                         .kind(serenity::model::channel::ChannelType::Voice)
                             .bitrate(max_bitrate);
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
@@ -50,7 +50,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 if let Ok(channel) = channel_result {
                     // Устанавливаем разрешения для пользователя
                     if let Err(_) = grant_owner_privileges(&ctx.http, &channel.id, &user_id).await {
-                        channel.delete(&ctx.http).await;
+                        let _ = channel.delete(&ctx.http).await;
                     }
 
                     // Переносим пользователя в созданный канал
@@ -77,7 +77,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = &new.channel_id {
         let data = ctx.data.read().await;
-        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
+        let pool = data.get::<SerenityPool>().expect("Failed to get DB pool");
         println!("RM: {}", channel_id.get() as i64);
         if !MonitoredAutoRoom::exists(pool, channel_id.get() as i64).await {
             return;
@@ -122,7 +122,7 @@ impl VoiceProccessing {
 
     async fn proccess_add(&self, ctx: &Context, msg: &Message, commands: Vec<&str>) -> String {
         let data = ctx.data.read().await;
-        let pool = data.get::<DbPool>().expect("Failed to get DB pool");
+        let pool = data.get::<SerenityPool>().expect("Failed to get DB pool");
         let channel_id = ChannelId::new(commands[2].parse::<u64>().unwrap());
         let category_id = ChannelId::new(commands[3].parse::<u64>().unwrap());
         let suffix = match commands.get(4) {
@@ -135,7 +135,7 @@ impl VoiceProccessing {
         if !self.check_channel(ctx, msg, &category_id).await {
             return format!("Wrong category id: {}", category_id);
         }
-        let autoroom = AutoRoom { channel_id: channel_id.get(), category_id: category_id.get(), suffix: suffix.to_string() };
+        let autoroom = AutoRoom { channel_id: channel_id.get() as i64, category_id: category_id.get() as i64, suffix: suffix.to_string() };
         autoroom.create(pool).await;
         return format!("Record was created! channel id: {}, category id: {}", channel_id, category_id);
     }

@@ -1,6 +1,3 @@
 /target
-*.exe
-*.sqlite3
-*.sqlite3-wal
-*.sqlite3-shm
-discord-bot/
+.shuttle*
+Secrets*.toml

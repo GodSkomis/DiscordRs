@@ -34,7 +34,7 @@ pub async fn invite(
         Err(_) => return Err(CommandError::from(err_msg)),
     };
 
-    let channel_id = ChannelId::new(monitored_autoroom.channel_id);
+    let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
     grant_guest_privileges(&ctx.http(), &channel_id, &invited_user.id).await?;
 
     ctx.say(
