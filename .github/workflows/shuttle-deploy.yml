@@ -14,7 +14,6 @@ jobs:
         with:
           shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
           project-id: proj_01JB8410KFMGSJZT1X49F4WP1F
-          cargo-shuttle-version: "0.48.1"
           extra-args: --allow-dirty --debug
           secrets: |
             DISCORD_TOKEN = '${{ secrets.DISCORD_TOKEN }}'
