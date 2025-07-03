@@ -31,14 +31,17 @@ pub async fn invite(
     };
 
     let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
-    grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await?;
-    
-    ctx.say(
-        &format!(
+    let result_msg = match grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await {
+        Ok(_) => &format!(
             "{} has been successfully invited",
             user.mention().to_string()
-        )
-    ).await?;
-
+        ),
+        Err(_) => &format!(
+            "Failed to invite {:?}",
+            user.name
+        ),
+    };
+    
+    ctx.say(result_msg).await?;
     Ok(())
 }
