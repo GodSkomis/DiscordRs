@@ -1,6 +1,6 @@
 use sqlx::{Error, Executor, FromRow, PgPool, Postgres};
 
-
+#[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct SavedRoom {
     id: i32,
@@ -72,7 +72,7 @@ impl SavedRoom {
     pub async fn insert(pool: &PgPool, savedroom : &SavedRoomDTO, guests: &Vec<i64>) -> Result<(), Error> {
         let mut tx = pool.begin().await?;
         let query = "INSERT INTO savedroom (owner_id, room_name, name, autoroom_id) VALUES ($1, $2, $3, $4) RETURNING id";
-        let savedroom_id: i64 = match sqlx::query_scalar(query)
+        let savedroom_id: i32 = match sqlx::query_scalar(query)
             .bind(savedroom.owner_id)
             .bind(savedroom.room_name.clone())
             .bind(savedroom.name.clone())
@@ -93,7 +93,6 @@ impl SavedRoom {
             };
 
         let _ = SavedRoomGuest::insert_many(&mut *tx, savedroom_id, guests.to_vec()).await?;
-
         tx.commit().await?;
         Ok(())
     }
@@ -102,7 +101,7 @@ impl SavedRoom {
 
 
 impl SavedRoomGuest {
-    pub async fn insert_many(executor: impl Executor<'_, Database = Postgres>, savedroom_id: i64, guest_ids: Vec<i64>) -> Result<(), Error> {
+    pub async fn insert_many(executor: impl Executor<'_, Database = Postgres>, savedroom_id: i32, guest_ids: Vec<i64>) -> Result<(), Error> {
         let query = "INSERT INTO savedroom_guest (savedroom_id, guest_id)
         SELECT * FROM UNNEST($1::INT[], $2::INT[])";
 
