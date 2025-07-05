@@ -129,9 +129,9 @@ mod table_builder {
                     CREATE TABLE IF NOT EXISTS savedroom (
                         id SERIAL PRIMARY KEY,
                         owner_id BIGINT UNIQUE NOT NULL,
-                        name VARCHAR(16) NOT NULL
-                        room_name VARCHAR(24) NOT NULL
-                        autoroom_id REFERENCES autoroom(id) ON DELETE CASCADE;
+                        name VARCHAR(16) NOT NULL,
+                        room_name VARCHAR(24) NOT NULL,
+                        autoroom_id REFERENCES autoroom(id) ON DELETE CASCADE
                 )
                 "#,
             )
@@ -147,7 +147,7 @@ mod table_builder {
                     CREATE TABLE IF NOT EXISTS savedroom_quest (
                         id SERIAL PRIMARY KEY,
                         guest_id BIGINT NOT NULL,
-                        saveroom_id BIGINT NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE,
+                        saveroom_id BIGINT NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE
                 )
                 "#,
             )
