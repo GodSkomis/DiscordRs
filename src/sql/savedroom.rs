@@ -131,7 +131,7 @@ mod table_builder {
                         owner_id BIGINT UNIQUE NOT NULL,
                         name VARCHAR(16) NOT NULL,
                         room_name VARCHAR(24) NOT NULL,
-                        autoroom_id REFERENCES autoroom(id) ON DELETE CASCADE
+                        autoroom_id BIGINT REFERENCES autoroom(id) ON DELETE CASCADE
                 )
                 "#,
             )
