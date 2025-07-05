@@ -103,7 +103,7 @@ impl SavedRoom {
 impl SavedRoomGuest {
     pub async fn insert_many(executor: impl Executor<'_, Database = Postgres>, savedroom_id: i32, guest_ids: Vec<i64>) -> Result<(), Error> {
         let query = "INSERT INTO savedroom_guest (savedroom_id, guest_id)
-        SELECT * FROM UNNEST($1::INT[], $2::INT[])";
+        SELECT * FROM UNNEST($1::integer[], $2::bigint[])";
 
         sqlx::query(query)
             .bind(vec![savedroom_id; guest_ids.len()])
