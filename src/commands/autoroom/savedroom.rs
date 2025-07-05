@@ -59,22 +59,21 @@ pub async fn save(
     let pool = &ctx.data().pool;
 
     let voice_channel = match voice_channel_id.to_channel(&ctx.http()).await {
-        Ok(channel) => channel,
+        Ok(channel) => match channel.guild() {
+            Some(_channel) => _channel,
+            None => return Err(CommandError::from("This room is outside autoroom guild"))
+        },
         Err(err) => {
             println!("Failed to convert voice_channel_id to channel.\n{:?}", err);
             return Err(CommandError::from("You are not connected to voice channel"))
         }
     };
-    let voice_channel_name = match voice_channel.clone().guild() {
-        Some(_channel) => _channel.name,
-        None => return Err(CommandError::from("This room is outside autoroom guild"))
-    };
-    let category_id = match voice_channel.clone().category() {
-        Some(_category) => _category.id.get().clone(),
+    let category_id = match voice_channel.parent_id {
+        Some(_category_id) => _category_id.get(),
         None => return Err(CommandError::from(
             format!(
                 "This room is outside autoroom category, VoiceChannelID: {}",
-                &voice_channel.id().get()
+                voice_channel.id.get()
             )
         ))
     };
@@ -97,9 +96,9 @@ pub async fn save(
         owner_id: room_cache.owner_id,
         name: match name {
             Some(_name) => _name,
-            None => voice_channel_name.clone()
+            None => voice_channel.name.clone()
         },
-        room_name: voice_channel_name,
+        room_name: voice_channel.name.clone(),
     };
     let _ = match SavedRoom::insert(pool, &savedroom, &Vec::from_iter(room_cache.guests)).await {
         Ok(_) => ctx.say(
