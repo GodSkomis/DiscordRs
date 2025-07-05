@@ -69,13 +69,23 @@ pub async fn save(
         Some(_channel) => _channel.name,
         None => return Err(CommandError::from("This room is outside autoroom guild"))
     };
-    let category_id = match voice_channel.category() {
+    let category_id = match voice_channel.clone().category() {
         Some(_category) => _category.id.get().clone(),
-        None => return Err(CommandError::from("This room is outside autoroom category"))
+        None => return Err(CommandError::from(
+            format!(
+                "This room is outside autoroom category, VoiceChannelID: {}",
+                &voice_channel.id().get()
+            )
+        ))
     };
     let autoroom = match AutoRoom::get_by_category_id(pool, category_id as i64).await {
         Ok(Some(_autoroom)) => _autoroom,
-        Ok(None) => return Err(CommandError::from("This room is outside autoroom mode")),
+        Ok(None) => return Err(CommandError::from(
+            format!(
+                "This room is outside autoroom category, CategoryID: {}",
+                &category_id
+            )
+        )),
         Err(err) => {
             println!("{:?}", err);
             return Err(CommandError::from("Something go wrong, please try again later"))
