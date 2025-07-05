@@ -32,7 +32,7 @@ impl From<SavedRoom> for SavedRoomDTO {
 // #[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct SavedRoomGuest {
-    pub saveroom_id: i64,
+    pub savedroom_id: i64,
     pub guest_id: i64,
 }
 
@@ -113,9 +113,7 @@ impl SavedRoomGuest {
             .await?;
 
         Ok(())
-    }
-
-    
+    } 
 }
 
 mod table_builder {
@@ -124,36 +122,34 @@ mod table_builder {
 
     impl SavedRoom {
         pub async fn create_table(pool : &PgPool) {
-            sqlx::query(
+            let _ = sqlx::query(
                 r#"
                     CREATE TABLE IF NOT EXISTS savedroom (
                         id SERIAL PRIMARY KEY,
                         owner_id BIGINT UNIQUE NOT NULL,
                         name VARCHAR(16) NOT NULL,
                         room_name VARCHAR(24) NOT NULL,
-                        autoroom_id BIGINT REFERENCES autoroom(id) ON DELETE CASCADE
-                )
+                        autoroom_id BIGINT NOT NULL REFERENCES autoroom(id) ON DELETE CASCADE
+                );
                 "#,
             )
             .execute(pool)
-            .await
-            .expect("Failed to create savedroom table");
+            .await;
         }
     }
     impl SavedRoomGuest {
         pub async fn create_table(pool : &PgPool) {
-            sqlx::query(
+            let _ = sqlx::query(
                 r#"
-                    CREATE TABLE IF NOT EXISTS savedroom_quest (
+                    CREATE TABLE IF NOT EXISTS savedroom_guest (
                         id SERIAL PRIMARY KEY,
                         guest_id BIGINT NOT NULL,
-                        saveroom_id BIGINT NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE
-                )
+                        savedroom_id BIGINT NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE
+                );
                 "#,
             )
             .execute(pool)
-            .await
-            .expect("Failed to create savedroom_guest table");
+            .await;
         }
     }
 }
