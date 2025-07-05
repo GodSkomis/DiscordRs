@@ -5,11 +5,24 @@ use serenity::client::Context;
 use serenity::model::channel::{ Message, Channel };
 
 use crate::services::autoroom::grant_owner_privileges;
+use crate::services::savedroom::remove_guest_cache;
+use crate::sql::autoroom::AutoRoomDTO;
 
 use super::sql::SerenityPool;
 use super::sql::autoroom::{AutoRoom, MonitoredAutoRoom};
 
 use super::bitrate::get_bitrate;
+
+pub mod prelude {
+    use std::sync::Arc;
+    use crate::commands::autoroom::savedroom::SavedRoomCache;
+    use serenity::prelude::TypeMapKey;
+    pub struct SavedRoomCacheType {}
+
+    impl TypeMapKey for SavedRoomCacheType {
+        type Value = Arc<SavedRoomCache>;
+    }
+}
 
 
 pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
@@ -90,7 +103,11 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
                     Ok(members) => {
                         if members.len() == 0 {
                             let _ = match channel.delete(&ctx.http).await {
-                                Ok(_) => {let _ = MonitoredAutoRoom::remove(pool, channel_id.get() as i64).await;},
+                                Ok(_) => {
+                                    let channel_id_raw = channel_id.get() as i64;
+                                    let _ = MonitoredAutoRoom::remove(pool, channel_id_raw).await;
+                                    remove_guest_cache(ctx, &channel_id_raw).await; // SavedRoom Cache
+                                },
                                 Err(_) => {},
                             };
                         };
@@ -135,8 +152,8 @@ impl VoiceProccessing {
         if !self.check_channel(ctx, msg, &category_id).await {
             return format!("Wrong category id: {}", category_id);
         }
-        let autoroom = AutoRoom { channel_id: channel_id.get() as i64, category_id: category_id.get() as i64, suffix: suffix.to_string() };
-        autoroom.create(pool).await;
+        let autoroom_dto = AutoRoomDTO { channel_id: channel_id.get() as i64, category_id: category_id.get() as i64, suffix: suffix.to_string() };
+        AutoRoom::insert(pool, &autoroom_dto).await;
         return format!("Record was created! channel id: {}, category id: {}", channel_id, category_id);
     }
 

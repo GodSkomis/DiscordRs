@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use anyhow::Context as _;
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::channel::Message;
@@ -8,13 +11,16 @@ use shuttle_runtime::SecretStore;
 
 mod voice;
 mod bitrate;
-mod sql;
-mod commands;
+pub mod sql;
+pub mod commands;
 pub mod services;
 
 use sqlx::PgPool;
 use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
+
+use crate::commands::autoroom::savedroom::SavedRoomCache;
+use crate::voice::prelude::SavedRoomCacheType;
 
 struct Handler;
 
@@ -58,6 +64,8 @@ async fn serenity(
     create_tables(&db).await;
     println!("Table creation has been completed");
 
+let savedroom_cache: Arc<SavedRoomCache> = Arc::new(Mutex::new(HashMap::new()));
+
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_VOICE_STATES
@@ -66,13 +74,17 @@ async fn serenity(
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
-        .framework(commands::generate_commands_framework(db.clone()).await)
+        .framework(commands::generate_commands_framework(
+            db.clone(),
+            Arc::clone(&savedroom_cache)
+        ).await)
         .await
         .expect("Error creating client");
 
     {
         let mut data = client.data.write().await;
         data.insert::<SerenityPool>(db.clone());
+        data.insert::<SavedRoomCacheType>(Arc::clone(&savedroom_cache));
     }
 
     if let Err(why) = client.start().await {

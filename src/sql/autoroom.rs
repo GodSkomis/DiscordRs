@@ -3,12 +3,19 @@ use sqlx::{Error, FromRow, PgPool, Row};
 
 #[derive(Debug, FromRow)]
 pub struct AutoRoom {
+    id: i64,
     pub channel_id: i64,
     pub category_id: i64,
     pub suffix: String
 }
 
-#[allow(dead_code)]
+#[derive(Debug, )]
+pub struct AutoRoomDTO {
+    pub channel_id: i64,
+    pub category_id: i64,
+    pub suffix: String
+}
+
 #[derive(Debug, FromRow)]
 pub struct MonitoredAutoRoom {
     pub channel_id: i64,
@@ -18,34 +25,51 @@ pub struct MonitoredAutoRoom {
 impl AutoRoom {
     // Метод для получения пользователя по ID
     pub async fn get_by_channel_id(pool: &PgPool, channel_id: i64) -> Result<Option<Self>, Error> {
-        match sqlx::query_as::<_, AutoRoom>("SELECT channel_id, category_id, suffix from autoroom WHERE channel_id = $1")
+        match sqlx::query_as::<_, AutoRoom>("SELECT * from autoroom WHERE channel_id = $1")
             .bind(channel_id)
             .fetch_one(pool)
             .await {
-            Ok(autoroom) => Ok(Some(autoroom)), // Если пользователь найден, возвращаем его обёрнутым в Some
+            Ok(autoroom) => Ok(Some(autoroom)),
             Err(err) => match err {
-                sqlx::Error::RowNotFound => Ok(None), // Если пользователь не найден, возвращаем None
-                _ => Err(err), // Для других ошибок возвращаем их
+                sqlx::Error::RowNotFound => Ok(None),
+                _ => Err(err),
             },
         }
     }
 
-    pub async fn create(&self, pool: &PgPool) {
+    pub async fn get_by_category_id(pool: &PgPool, category_id: i64) -> Result<Option<Self>, Error> {
+        match sqlx::query_as::<_, AutoRoom>("SELECT * from autoroom WHERE category_id = $1")
+            .bind(category_id)
+            .fetch_one(pool)
+            .await {
+            Ok(autoroom) => Ok(Some(autoroom)),
+            Err(err) => match err {
+                sqlx::Error::RowNotFound => Ok(None),
+                _ => Err(err),
+            },
+        }
+    }
+
+    pub async fn insert(pool: &PgPool, dto: &AutoRoomDTO) {
         let query = "INSERT INTO autoroom (channel_id, category_id, suffix) VALUES ($1, $2, $3)";
         sqlx::query(query)
-            .bind(self.channel_id)
-            .bind(self.category_id)
-            .bind(self.suffix.clone())
+            .bind(dto.channel_id)
+            .bind(dto.category_id)
+            .bind(dto.suffix.clone())
             .execute(pool)
             .await
             .expect(
                 &format!(
                     "Failed to insert AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})",
-                    self.channel_id,
-                    self.category_id,
-                    self.suffix
+                    dto.channel_id,
+                    dto.category_id,
+                    dto.suffix
                 )
             );
+    }
+
+    pub fn id(&self) -> i64 {
+        self.id
     }
 }
 

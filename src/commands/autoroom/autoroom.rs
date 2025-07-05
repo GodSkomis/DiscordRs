@@ -1,12 +1,22 @@
 use poise::serenity_prelude as serenity;
 use ::serenity::all::{ChannelId, Mentionable};
 
-use crate::{services::autoroom::grant_guest_privileges, MonitoredAutoRoom};
+use crate::{
+    commands::{CommandContext, CommandError},
+    services::autoroom::grant_guest_privileges,
+    MonitoredAutoRoom
+};
 
-use super::{ CommandContext, CommandError };
+use super::savedroom::save;
 
 
-#[poise::command(slash_command, subcommands("invite"))]
+#[poise::command(
+    slash_command,
+    subcommands(
+        "invite",
+        "save"
+    )
+)]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -31,7 +41,7 @@ pub async fn invite(
     };
 
     let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
-    let result_msg = match grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await {
+    let result_msg = match grant_guest_privileges(&ctx, &channel_id, &user.id).await {
         Ok(_) => &format!(
             "{} has been successfully invited",
             user.mention().to_string()
