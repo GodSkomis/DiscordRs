@@ -3,7 +3,7 @@ use sqlx::{Error, FromRow, PgPool, Row};
 
 #[derive(Debug, FromRow)]
 pub struct AutoRoom {
-    id: i64,
+    id: i32,
     pub channel_id: i64,
     pub category_id: i64,
     pub suffix: String
@@ -68,7 +68,7 @@ impl AutoRoom {
             );
     }
 
-    pub fn id(&self) -> i64 {
+    pub fn id(&self) -> i32 {
         self.id
     }
 }

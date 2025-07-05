@@ -3,11 +3,11 @@ use sqlx::{Error, Executor, FromRow, PgPool, Postgres};
 
 #[derive(Debug, FromRow)]
 pub struct SavedRoom {
-    pub id: i64,
+    id: i32,
     pub owner_id: i64,
     pub name: String,
     pub room_name: String,
-    pub autoroom_id: i64
+    pub autoroom_id: i32
 }
 
 #[derive(Debug, FromRow)]
@@ -15,7 +15,7 @@ pub struct SavedRoomDTO {
     pub owner_id: i64,
     pub name: String,
     pub room_name: String,
-    pub autoroom_id: i64
+    pub autoroom_id: i32
 }
 
 impl From<SavedRoom> for SavedRoomDTO {
@@ -129,7 +129,7 @@ mod table_builder {
                         owner_id BIGINT UNIQUE NOT NULL,
                         name VARCHAR(16) NOT NULL,
                         room_name VARCHAR(24) NOT NULL,
-                        autoroom_id BIGINT NOT NULL REFERENCES autoroom(id) ON DELETE CASCADE
+                        autoroom_id INTEGER NOT NULL REFERENCES autoroom(id) ON DELETE CASCADE
                 );
                 "#,
             )
@@ -144,7 +144,7 @@ mod table_builder {
                     CREATE TABLE IF NOT EXISTS savedroom_guest (
                         id SERIAL PRIMARY KEY,
                         guest_id BIGINT NOT NULL,
-                        savedroom_id BIGINT NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE
+                        savedroom_id INTEGER NOT NULL REFERENCES savedroom(id) ON DELETE CASCADE
                 );
                 "#,
             )
