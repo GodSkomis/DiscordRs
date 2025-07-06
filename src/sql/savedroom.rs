@@ -32,7 +32,7 @@ impl From<SavedRoom> for SavedRoomDTO {
 // #[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct SavedRoomGuest {
-    pub savedroom_id: i64,
+    pub savedroom_id: i32,
     pub guest_id: i64,
 }
 
