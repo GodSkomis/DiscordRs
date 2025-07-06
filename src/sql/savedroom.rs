@@ -43,7 +43,7 @@ impl SavedRoom {
 
     pub async fn get_user_category_savedrooms(pool: &PgPool, owner_id: i64, category_id: i64) -> Result<Vec<Self>, Error> {
         let query = "
-            SELECT * FROM savedroom s
+            SELECT s.* FROM savedroom s
             INNER JOIN autoroom a
             ON s.autoroom_id = a.id
             WHERE s.owner_id = $1
