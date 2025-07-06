@@ -1,7 +1,7 @@
 use sqlx::{Error, Executor, FromRow, PgPool, Postgres};
 
 #[allow(dead_code)]
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Clone)]
 pub struct SavedRoom {
     id: i32,
     pub owner_id: i64,
@@ -37,17 +37,24 @@ pub struct SavedRoomGuest {
 }
 
 impl SavedRoom {
-    pub async fn get_by_owner_id(pool: &PgPool, owner_id: i64) -> Result<Option<Self>, Error> {
-        match sqlx::query_as::<_, SavedRoom>("SELECT * from savedroom WHERE owner_id = $1")
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+
+    pub async fn get_user_category_savedrooms(pool: &PgPool, owner_id: i64, category_id: i64) -> Result<Vec<Self>, Error> {
+        let query = "
+            SELECT * FROM savedroom s
+            INNER JOIN autoroom a
+            ON s.autoroom_id = a.id
+            WHERE s.owner_id = $1
+                AND a.category_id = $2
+            ORDER BY s.id;
+        ";
+        sqlx::query_as::<_, SavedRoom>(query)
             .bind(owner_id)
-            .fetch_one(pool)
-            .await {
-            Ok(savedroom) => Ok(Some(savedroom)),
-            Err(err) => match err {
-                sqlx::Error::RowNotFound => Ok(None),
-                _ => Err(err),
-            },
-        }
+            .bind(category_id)
+            .fetch_all(pool)
+            .await
     }
 
     // pub async fn insert(&self, pool: &PgPool) { // Make "update" method insted

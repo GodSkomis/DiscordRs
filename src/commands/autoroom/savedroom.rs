@@ -1,7 +1,11 @@
 use std::collections::{HashMap, HashSet};
+use ::serenity::all::CreateSelectMenuKind;
 use tokio::sync::Mutex;
+use poise::{serenity_prelude as serenity, CreateReply};
 
-use crate::{commands::{CommandContext, CommandError}, sql::{prelude::AutoRoom, savedroom::{SavedRoom, SavedRoomDTO}}};
+use crate::{commands::{CommandContext, CommandError}, services::utils::get_voice_channel_category, sql::{prelude::AutoRoom, savedroom::{SavedRoom, SavedRoomDTO}}};
+use crate::services::utils::get_user_guild_voice_channel;
+
 
 #[derive(Debug, Clone)]
 pub struct SaveRoomCacheRecord {
@@ -31,21 +35,11 @@ pub async fn save(
     #[description = "Name for a record"] name: Option<String>,
 ) -> Result<(), CommandError> {
 
-    let guild = match ctx.guild() {
-        Some(_guild) => _guild.clone(),
-        None => return Err(CommandError::from("Autoroom works only inside the guild"))
-    };
-    let voice_channel_id = match guild.voice_states.get(&ctx.author().id) {
-        Some(vocie_sate) => match vocie_sate.channel_id {
-            Some(channel_id) => channel_id,
-            None => return Err(CommandError::from("You are not connected to voice channel"))
-        },
-        None => return Err(CommandError::from("You are not connected to voice channel"))
-    };
+    let voice_channel = get_user_guild_voice_channel(&ctx, None).await?;
 
     let room_cache = {
         let cache = &ctx.data().savedroom_cache.lock().await;
-        let record = match cache.get(&(voice_channel_id.get() as i64)) {
+        let record = match cache.get(&(voice_channel.id.get() as i64)) {
             Some(room_cache) => room_cache.clone(),
             None => return Err(CommandError::from("Nothing to save"))
         };
@@ -56,28 +50,10 @@ pub async fn save(
         return Err(CommandError::from("Nothing to save"))
     }
 
-    let pool = &ctx.data().pool;
+    let category_id = get_voice_channel_category(&voice_channel)?;
 
-    let voice_channel = match voice_channel_id.to_channel(&ctx.http()).await {
-        Ok(channel) => match channel.guild() {
-            Some(_channel) => _channel,
-            None => return Err(CommandError::from("This room is outside autoroom guild"))
-        },
-        Err(err) => {
-            println!("Failed to convert voice_channel_id to channel.\n{:?}", err);
-            return Err(CommandError::from("You are not connected to voice channel"))
-        }
-    };
-    let category_id = match voice_channel.parent_id {
-        Some(_category_id) => _category_id.get(),
-        None => return Err(CommandError::from(
-            format!(
-                "This room is outside autoroom category, VoiceChannelID: {}",
-                voice_channel.id.get()
-            )
-        ))
-    };
-    let autoroom = match AutoRoom::get_by_category_id(pool, category_id as i64).await {
+    let pool = &ctx.data().pool;
+    let autoroom = match AutoRoom::get_by_category_id(pool, category_id.get() as i64).await {
         Ok(Some(_autoroom)) => _autoroom,
         Ok(None) => return Err(CommandError::from(
             format!(
@@ -114,6 +90,131 @@ pub async fn save(
     };
 
     Ok(())
+}
+
+
+#[derive(Debug, poise::Modal)]
+#[name = "A room record name"]
+#[allow(dead_code)]
+struct SavedRoomModal {
+    #[name = "Record name"]
+    #[placeholder = "Choose a name to load"]
+    record_name: String
+}
+
+
+#[poise::command(slash_command)]
+pub async fn load(
+    ctx: CommandContext<'_>
+) -> Result<(), CommandError> {
+
+    let user_id = ctx.author().id;
+    let voice_channel = get_user_guild_voice_channel(&ctx, Some(&user_id)).await?;
+    let category_id = get_voice_channel_category(&voice_channel)?;
+    let pool = &ctx.data().pool;
+    let savedrooms = match SavedRoom::get_user_category_savedrooms(
+        pool, ctx.author().id.get() as i64,
+        category_id.get() as i64
+    ).await {
+        Ok(rows) => {
+            if rows.is_empty() {
+                return Err(CommandError::from("Something go wrong, please try again later"))
+            };
+            rows
+        },
+        Err(err) => {
+            println!("Failed to load user`s: {:?} savedrooms.\n{:?}", user_id.get(), err);
+            return Err(CommandError::from("Something go wrong, please try again later"))
+        }
+    };
+
+    let options: Vec<serenity::CreateSelectMenuOption> = savedrooms.clone()
+        .into_iter()
+        .map(|_savedroom| {
+            let option = serenity::CreateSelectMenuOption::new(
+                _savedroom.name.clone(),
+                _savedroom.name.clone()
+            );
+            let option = option.description(format!("Room name: {}", _savedroom.room_name.clone()));
+            option
+        })
+        .collect();
+    
+    let custom_modal_id = "savedroom_select";
+    let select_menu = serenity::CreateSelectMenu::new(
+        custom_modal_id,
+        CreateSelectMenuKind::String { options: options }
+    );
+
+    let action_row = serenity::CreateActionRow::SelectMenu(select_menu);
+
+    let _ = ctx.send(
+        CreateReply::default()
+            .content("Choose a record to load: ")
+            .components(vec![action_row]),
+    )
+    .await?;
+
+    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context())
+        .timeout(std::time::Duration::from_secs(30))
+        .filter(move |mci| mci.data.custom_id == custom_modal_id)
+        .await {
+
+        let user_answer = match
+            poise::execute_modal_on_component_interaction::<SavedRoomModal>(ctx, mci, None, Some(std::time::Duration::from_secs(30))).await {
+                Ok(_interaction) => match _interaction {
+                    Some(_modal) => _modal,
+                    None => return Err(CommandError::from("Please, choose profile name.")),
+                },
+                Err(err) => {
+                    println!("Failed to get user`s: {:?} modal 'SavedRoomModal' answer.\n{:?}", user_id.get(), err);
+                    return Err(CommandError::from("Something go wrong, please try again later"))
+                },
+            };
+
+        let record_name = user_answer.record_name.clone();
+        let profile = match savedrooms.iter().find(|&room| room.name == record_name) {
+            Some(_room) => _room.clone(),
+            None => return Err(CommandError::from("Profile with given name not found.")),
+        };
+        ctx.say(format!(
+            "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
+            profile.owner_id,
+            profile.name,
+            profile.room_name,
+            profile.autoroom_id
+        )).await?;
+    };
+
+    // if let Some(mci) = reply
+    //     .message()
+    //     .await?
+    //     .await_component_interaction(ctx.serenity_context())
+    //     .author_id(user_id)
+    //     .timeout(std::time::Duration::from_secs(30))
+    //     .await
+    // {
+    //     let selected_value = &mci.data.values[0];
+
+    //     mci.create_interaction_response(ctx.serenity_context(), |resp| {
+    //         resp.kind(serenity::InteractionResponseType::ChannelMessageWithSource)
+    //             .interaction_response_data(|data| {
+    //                 data.content(format!("✅ Loading '{}' profile", selected_value))
+    //                     .ephemeral(true)
+    //             })
+    //     })
+    //     .await?;
+    // } else {
+    //     ctx.send(
+    //         CreateReply::default()
+    //             .content("⌛ Timeout")
+    //             .ephemeral(true),
+    //     )
+    //     .await?;
+    // }
+
+    Ok(())
+
 }
 
 

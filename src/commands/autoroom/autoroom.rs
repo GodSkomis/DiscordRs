@@ -7,14 +7,15 @@ use crate::{
     MonitoredAutoRoom
 };
 
-use super::savedroom::save;
+use super::savedroom::{save, load};
 
 
 #[poise::command(
     slash_command,
     subcommands(
         "invite",
-        "save"
+        "save",
+        "load"
     )
 )]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {

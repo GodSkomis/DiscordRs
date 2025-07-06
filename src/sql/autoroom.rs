@@ -23,7 +23,6 @@ pub struct MonitoredAutoRoom {
 }
 
 impl AutoRoom {
-    // Метод для получения пользователя по ID
     pub async fn get_by_channel_id(pool: &PgPool, channel_id: i64) -> Result<Option<Self>, Error> {
         match sqlx::query_as::<_, AutoRoom>("SELECT * from autoroom WHERE channel_id = $1")
             .bind(channel_id)
