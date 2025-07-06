@@ -155,37 +155,6 @@ pub async fn load(
     )
     .await?;
 
-    // while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context())
-    //     .timeout(std::time::Duration::from_secs(30))
-    //     .filter(move |mci| mci.data.custom_id == custom_modal_id)
-    //     .await {
-
-    //     let user_answer = match
-    //         poise::execute_modal_on_component_interaction::<SavedRoomModal>(ctx, mci, None, Some(std::time::Duration::from_secs(30))).await {
-    //             Ok(_interaction) => match _interaction {
-    //                 Some(_modal) => _modal,
-    //                 None => return Err(CommandError::from("Please, choose profile name.")),
-    //             },
-    //             Err(err) => {
-    //                 println!("Failed to get user`s: {:?} modal 'SavedRoomModal' answer.\n{:?}", user_id.get(), err);
-    //                 return Err(CommandError::from("Something go wrong, please try again later"))
-    //             },
-    //         };
-
-    //     let record_name = user_answer.record_name.clone();
-    //     let profile = match savedrooms.iter().find(|&room| room.name == record_name) {
-    //         Some(_room) => _room.clone(),
-    //         None => return Err(CommandError::from("Profile with given name not found.")),
-    //     };
-    //     ctx.say(format!(
-    //         "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
-    //         profile.owner_id,
-    //         profile.name,
-    //         profile.room_name,
-    //         profile.autoroom_id
-    //     )).await?;
-    // };
-
     let msg_ref = reply.message().await?;
 
     // Ждём взаимодействия
@@ -202,20 +171,26 @@ pub async fn load(
                 Some(_room) => _room.clone(),
                 None => return Err(CommandError::from("Profile with given name not found.")),
             };
-            // ctx.say(format!(
-            //     "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
-            //     profile.owner_id,
-            //     profile.name,
-            //     profile.room_name,
-            //     profile.autoroom_id
-            // )).await?;
-            interaction
-                .create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
-                    serenity::CreateInteractionResponseMessage::new()
-                        .content(format!("🎉Profile: `{}`", profile.name))
-                ))
-                .await?;
+
+            // interaction
+            //     .create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
+            //         serenity::CreateInteractionResponseMessage::new()
+            //             .content(format!("🎉Profile: `{}`", profile.name))
+            //     ))
+            //     .await?; // Don't delete this block. This is actually right way to wrok with interactions
             
+            interaction.create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
+                serenity::CreateInteractionResponseMessage::new()
+                    .content(format!("⏳ Loading profile: '{}', please wait and don't change room settings to avoid overwriting ⏳", record_name))
+                    .components(vec![])
+            )).await?;
+
+            interaction.create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
+                serenity::CreateInteractionResponseMessage::new()
+                    .content(format!("✅Pofile: '{}' have been successfully loaded✅", record_name))
+                    .components(vec![])
+            )).await?;
+
         } else {
             eprintln!("Wrong component kind");
             return Err(CommandError::from("Something go wrong, please try again later"))
