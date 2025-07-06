@@ -186,7 +186,13 @@ pub async fn load(
             )).await?;
 
             let guests = match SavedRoomGuest::get_guests(pool, profile.id()).await {
-                Ok(_guests) => _guests,
+            Ok(_guests) => {
+                if _guests.is_empty() {
+                    println!("Guest list is empty.\nSavedRoom: {:?}", profile);
+                    return Err(CommandError::from("No one to invite"))
+                };
+                _guests
+            },
                 Err(err) => {
                     println!("Failed to load guests of savedroom {:?}.\n{:?}", profile, err);
                     return Err(CommandError::from("Something go wrong, please try again later"))
@@ -212,7 +218,6 @@ pub async fn load(
             //         .content(format!("✅Pofile: '{}' have been successfully loaded✅", record_name))
             //         .components(vec![])
             // )).await?;
-
             ctx.say(mentions.join(" ")).await?;
 
         } else {
