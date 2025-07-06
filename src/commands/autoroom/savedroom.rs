@@ -148,70 +148,81 @@ pub async fn load(
 
     let action_row = serenity::CreateActionRow::SelectMenu(select_menu);
 
-    let _ = ctx.send(
+    let reply = ctx.send(
         CreateReply::default()
             .content("Choose a record to load: ")
             .components(vec![action_row]),
     )
     .await?;
 
-    while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context())
-        .timeout(std::time::Duration::from_secs(30))
-        .filter(move |mci| mci.data.custom_id == custom_modal_id)
-        .await {
-
-        let user_answer = match
-            poise::execute_modal_on_component_interaction::<SavedRoomModal>(ctx, mci, None, Some(std::time::Duration::from_secs(30))).await {
-                Ok(_interaction) => match _interaction {
-                    Some(_modal) => _modal,
-                    None => return Err(CommandError::from("Please, choose profile name.")),
-                },
-                Err(err) => {
-                    println!("Failed to get user`s: {:?} modal 'SavedRoomModal' answer.\n{:?}", user_id.get(), err);
-                    return Err(CommandError::from("Something go wrong, please try again later"))
-                },
-            };
-
-        let record_name = user_answer.record_name.clone();
-        let profile = match savedrooms.iter().find(|&room| room.name == record_name) {
-            Some(_room) => _room.clone(),
-            None => return Err(CommandError::from("Profile with given name not found.")),
-        };
-        ctx.say(format!(
-            "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
-            profile.owner_id,
-            profile.name,
-            profile.room_name,
-            profile.autoroom_id
-        )).await?;
-    };
-
-    // if let Some(mci) = reply
-    //     .message()
-    //     .await?
-    //     .await_component_interaction(ctx.serenity_context())
-    //     .author_id(user_id)
+    // while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx.serenity_context())
     //     .timeout(std::time::Duration::from_secs(30))
-    //     .await
-    // {
-    //     let selected_value = &mci.data.values[0];
+    //     .filter(move |mci| mci.data.custom_id == custom_modal_id)
+    //     .await {
 
-    //     mci.create_interaction_response(ctx.serenity_context(), |resp| {
-    //         resp.kind(serenity::InteractionResponseType::ChannelMessageWithSource)
-    //             .interaction_response_data(|data| {
-    //                 data.content(format!("✅ Loading '{}' profile", selected_value))
-    //                     .ephemeral(true)
-    //             })
-    //     })
-    //     .await?;
-    // } else {
-    //     ctx.send(
-    //         CreateReply::default()
-    //             .content("⌛ Timeout")
-    //             .ephemeral(true),
-    //     )
-    //     .await?;
-    // }
+    //     let user_answer = match
+    //         poise::execute_modal_on_component_interaction::<SavedRoomModal>(ctx, mci, None, Some(std::time::Duration::from_secs(30))).await {
+    //             Ok(_interaction) => match _interaction {
+    //                 Some(_modal) => _modal,
+    //                 None => return Err(CommandError::from("Please, choose profile name.")),
+    //             },
+    //             Err(err) => {
+    //                 println!("Failed to get user`s: {:?} modal 'SavedRoomModal' answer.\n{:?}", user_id.get(), err);
+    //                 return Err(CommandError::from("Something go wrong, please try again later"))
+    //             },
+    //         };
+
+    //     let record_name = user_answer.record_name.clone();
+    //     let profile = match savedrooms.iter().find(|&room| room.name == record_name) {
+    //         Some(_room) => _room.clone(),
+    //         None => return Err(CommandError::from("Profile with given name not found.")),
+    //     };
+    //     ctx.say(format!(
+    //         "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
+    //         profile.owner_id,
+    //         profile.name,
+    //         profile.room_name,
+    //         profile.autoroom_id
+    //     )).await?;
+    // };
+
+    let msg_ref = reply.message().await?;
+
+    // Ждём взаимодействия
+    if let Some(interaction) = msg_ref
+        .await_component_interaction(ctx.serenity_context())
+        .author_id(user_id)
+        .timeout(std::time::Duration::from_secs(30))
+        .await
+    {
+        // Обработка выбора
+        if let serenity::ComponentInteractionDataKind::StringSelect { values } = &interaction.data.kind {
+            let record_name = values.get(0).unwrap().clone();
+            let profile = match savedrooms.iter().find(|&room| room.name == record_name) {
+                Some(_room) => _room.clone(),
+                None => return Err(CommandError::from("Profile with given name not found.")),
+            };
+            // ctx.say(format!(
+            //     "Owner: {}, Name: {}, room_name: {}, autoroom_id: {}",
+            //     profile.owner_id,
+            //     profile.name,
+            //     profile.room_name,
+            //     profile.autoroom_id
+            // )).await?;
+            interaction
+                .create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
+                    serenity::CreateInteractionResponseMessage::new()
+                        .content(format!("🎉Profile: `{}`", profile.name))
+                ))
+                .await?;
+            
+        } else {
+            eprintln!("Wrong component kind");
+            return Err(CommandError::from("Something go wrong, please try again later"))
+        }
+    } else {
+        ctx.say("Timeout").await?;
+    }
 
     Ok(())
 
