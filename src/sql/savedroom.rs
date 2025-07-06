@@ -120,6 +120,14 @@ impl SavedRoomGuest {
 
         Ok(())
     } 
+    
+    pub async fn get_guests(executor: impl Executor<'_, Database = Postgres>, savedroom_id: i32) -> Result<Vec<Self>, Error> { 
+        let query = "SELECT * from savedroom_guest WHERE savedroom_id = $1";
+        sqlx::query_as::<_, SavedRoomGuest>(query)
+            .bind(savedroom_id)
+            .fetch_all(executor)
+            .await
+    }
 }
 
 mod table_builder {

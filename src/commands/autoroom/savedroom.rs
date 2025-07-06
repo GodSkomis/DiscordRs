@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use ::serenity::all::CreateSelectMenuKind;
+use ::serenity::all::{CreateSelectMenuKind, UserId};
 use tokio::sync::Mutex;
 use poise::{serenity_prelude as serenity, CreateReply};
 
-use crate::{commands::{CommandContext, CommandError}, services::utils::get_voice_channel_category, sql::{prelude::AutoRoom, savedroom::{SavedRoom, SavedRoomDTO}}};
+use crate::{commands::{CommandContext, CommandError}, services::{autoroom::grant_guest_privileges, utils::get_voice_channel_category}, sql::{prelude::AutoRoom, savedroom::{SavedRoom, SavedRoomDTO, SavedRoomGuest}}};
 use crate::services::utils::get_user_guild_voice_channel;
 
 
@@ -185,11 +185,28 @@ pub async fn load(
                     .components(vec![])
             )).await?;
 
+            let guests = match SavedRoomGuest::get_guests(pool, profile.id()).await {
+                Ok(_guests) => _guests,
+                Err(err) => {
+                    println!("Failed to load guests of savedroom {:?}.\n{:?}", profile, err);
+                    return Err(CommandError::from("Something go wrong, please try again later"))
+                }
+            };
+            let mut mentions: Vec<String> = Vec::new();
+            for guest in guests {
+                let guest_id = UserId::new(guest.guest_id as u64);
+                if let Err(err) = grant_guest_privileges(&ctx, &voice_channel.id, &guest_id).await {
+                    eprintln!("{:?}", err);
+                    continue;
+                };
+                mentions.push(format!("<@{}>", guest.guest_id as u64));
+            };
             interaction.create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
                 serenity::CreateInteractionResponseMessage::new()
                     .content(format!("✅Pofile: '{}' have been successfully loaded✅", record_name))
                     .components(vec![])
             )).await?;
+            ctx.say(mentions.join(" ")).await?;
 
         } else {
             eprintln!("Wrong component kind");
