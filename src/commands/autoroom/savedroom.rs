@@ -201,11 +201,18 @@ pub async fn load(
                 };
                 mentions.push(format!("<@{}>", guest.guest_id as u64));
             };
-            interaction.create_response(ctx.serenity_context(), serenity::CreateInteractionResponse::UpdateMessage(
-                serenity::CreateInteractionResponseMessage::new()
+
+            interaction.edit_response(ctx.serenity_context(), serenity::EditInteractionResponse::new()
                     .content(format!("✅Pofile: '{}' have been successfully loaded✅", record_name))
                     .components(vec![])
-            )).await?;
+            ).await?;
+
+            // interaction.edit_response(ctx.serenity_context(), serenity::EditInteractionResponse::new(
+            //     serenity::CreateInteractionResponseMessage::new()
+            //         .content(format!("✅Pofile: '{}' have been successfully loaded✅", record_name))
+            //         .components(vec![])
+            // )).await?;
+
             ctx.say(mentions.join(" ")).await?;
 
         } else {
