@@ -16,16 +16,15 @@ pub struct MonitoredAutoRoom {
 }
 
 impl AutoRoom {
-    // Метод для получения пользователя по ID
     pub async fn get_by_channel_id(pool: &PgPool, channel_id: i64) -> Result<Option<Self>, Error> {
         match sqlx::query_as::<_, AutoRoom>("SELECT channel_id, category_id, suffix from autoroom WHERE channel_id = $1")
             .bind(channel_id)
             .fetch_one(pool)
             .await {
-            Ok(autoroom) => Ok(Some(autoroom)), // Если пользователь найден, возвращаем его обёрнутым в Some
+            Ok(autoroom) => Ok(Some(autoroom)),
             Err(err) => match err {
-                sqlx::Error::RowNotFound => Ok(None), // Если пользователь не найден, возвращаем None
-                _ => Err(err), // Для других ошибок возвращаем их
+                sqlx::Error::RowNotFound => Ok(None),
+                _ => Err(err),
             },
         }
     }
@@ -57,15 +56,14 @@ impl MonitoredAutoRoom {
             .fetch_one(pool)
             .await;
 
-        // Извлекаем значение из результата
         match result {
             Ok(row) => {
-                let exists: bool = row.get(0); // Извлекаем значение
+                let exists: bool = row.get(0);
                 exists
             },
             Err(err) => {
-                println!("{}", err);
-                false // В случае ошибки возвращаем false
+                tracing::error!("{}", err);
+                false
             }
         }
     }
@@ -77,7 +75,6 @@ impl MonitoredAutoRoom {
         .execute(pool)
         .await?;
 
-        // Проверяем, были ли затронуты строки
         Ok(result.rows_affected() > 0)
     }
     

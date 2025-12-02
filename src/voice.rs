@@ -27,7 +27,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 return;
             }
             Err(e) => {
-                println!("Error fetching autoroom: {:?}", e);
+                tracing::error!("Error fetching autoroom: {:?}", e);
                 return;
             }
         };
@@ -55,7 +55,7 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
 
                     // Переносим пользователя в созданный канал
                     if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
-                        println!(
+                        tracing::error!(
                             "Failed to move the user({:?}) to the new voice channel({:?}). Error: \"{:?}\"",
                             &user_id.get(),
                             &channel.id.get(),
@@ -78,7 +78,7 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
     if let Some(channel_id) = &new.channel_id {
         let data = ctx.data.read().await;
         let pool = data.get::<SerenityPool>().expect("Failed to get DB pool");
-        println!("RM: {}", channel_id.get() as i64);
+         tracing::info!("Remove Room: {}", channel_id.get() as i64);
         if !MonitoredAutoRoom::exists(pool, channel_id.get() as i64).await {
             return;
         };
@@ -91,13 +91,13 @@ pub async fn remove_proccessing(ctx: &Context, new: &VoiceState) {
                         if members.len() == 0 {
                             let _ = match channel.delete(&ctx.http).await {
                                 Ok(_) => {let _ = MonitoredAutoRoom::remove(pool, channel_id.get() as i64).await;},
-                                Err(_) => {},
+                                Err(err) => tracing::error!("Remove Room `MonitoredAutoRoom` Error: {}", err),
                             };
                         };
                     },
-                Err(err) => println!("Err: {}", err)
+                    Err(err) => tracing::error!("Remove Room `members` Error: {}", err)
         }},
-            Err(err) => println!("Err: {}", err)
+            Err(err) => tracing::error!("Remove Room `ctx.http` Error: {}", err)
         }
     }
 }

@@ -13,7 +13,7 @@ pub async fn  grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: 
         kind: PermissionOverwriteType::Member(*user_id),
     };
     if let Err(err) = channel.create_permission(http, permissions).await {
-        println!(
+        tracing::error!(
             "Failed to grant channel({:?}) permissions to the user({:?}). Error: \"{:?}\"",
             &channel.get(),
             &user_id.get(),
@@ -32,7 +32,7 @@ pub async fn  grant_guest_privileges(http: &Http, channel: &ChannelId, user_id: 
         kind: PermissionOverwriteType::Member(*user_id),
     };
     if let Err(err) = channel.create_permission(http, permissions).await {
-        println!(
+        tracing::error!(
             "Failed to grant channel({:?}) permissions to the user({:?}). Error: \"{:?}\"",
             &channel.get(),
             &user_id.get(),
