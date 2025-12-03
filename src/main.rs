@@ -41,7 +41,10 @@ impl EventHandler for Handler {
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         create_proccessing(&ctx, &new).await;
         if let Some(voice_state) = old {
-            let err = remove_channel_by_voicestate(&ctx, &voice_state).await.unwrap_err();
+            let err = match remove_channel_by_voicestate(&ctx, &voice_state).await {
+                Ok(_) => return,
+                Err(_err) => _err,
+            };
             tracing::error!(err);
         };
     }
