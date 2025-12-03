@@ -7,7 +7,7 @@ pub type CommandError = Box<dyn std::error::Error + Send + Sync>;
 pub type CommandContext<'a> = poise::Context<'a, CommandData, CommandError>;
 
 pub struct CommandData {
-    pool: PgPool
+    pub pool: PgPool
 }
 
 pub async fn generate_commands_framework(pool: PgPool) -> poise::Framework<CommandData, CommandError> {

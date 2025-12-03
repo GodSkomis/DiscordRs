@@ -4,7 +4,6 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
-// use tracing::{error, info};
 
 mod voice;
 mod bitrate;
@@ -13,7 +12,7 @@ mod commands;
 pub mod services;
 
 use sqlx::PgPool;
-use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
+use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
 
 struct Handler;
@@ -21,13 +20,13 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        tracing::info!("`{}` is now online", ready.user.name);
     }
 
     async fn message(&self, ctx: Context, msg: Message) {
         if let Some(response) = VoiceProccessing.proccess(&ctx, &msg).await {
             if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
-                println!("Error sending message: {why:?}");
+                tracing::error!("Error sending message: {why:?}");
             }
         }
     }
@@ -35,7 +34,8 @@ impl EventHandler for Handler {
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         create_proccessing(&ctx, &new).await;
         if let Some(voice_state) = old {
-            remove_proccessing(&ctx, &voice_state).await;
+            let err = remove_channel_by_voicestate(&ctx, &voice_state).await.unwrap_err();
+            tracing::error!(err);
         };
     }
 }
@@ -50,13 +50,13 @@ async fn serenity(
         .get("DISCORD_TOKEN")
         .context("'DISCORD_TOKEN' was not found")?;
 
-    println!("Drop table has begun");
+    tracing::info!("Drop table has begun");
     sqlx::query("DROP table monitored_autoroom").execute(&db).await.expect("Drop table 'monitored_autoroom' unsuccessful");
-    println!("Drop table has been completed");
+    tracing::info!("Drop table has been completed");
 
-    println!("Table creation has begun");
+    tracing::info!("Table creation has begun");
     create_tables(&db).await;
-    println!("Table creation has been completed");
+    tracing::info!("Table creation has been completed");
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::non_privileged()
@@ -76,7 +76,7 @@ async fn serenity(
     }
 
     if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
+        tracing::info!("Client error: {:?}", why);
     }
 
     Ok(client.into())
