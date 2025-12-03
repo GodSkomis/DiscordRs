@@ -65,7 +65,14 @@ async fn serenity(
     create_tables(&db).await;
     tracing::info!("Table creation has been completed");
 
-    GLOBAL_SQL_POOL.set(SqlPool::new(db.clone())).err().unwrap();
+    match GLOBAL_SQL_POOL.set(SqlPool::new(db.clone())) {
+        Ok(_) => (),
+        Err(_) => {
+            tracing::error!("GLOBAL_SQL_POOL isn't empty");
+            GLOBAL_SQL_POOL.get().expect("Unable to get GLOBAL_SQL_POOL");
+        },
+    };
+
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::non_privileged()
