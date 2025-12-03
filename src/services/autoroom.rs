@@ -49,6 +49,25 @@ struct CleanUpDbRecord {
     autoroom: MonitoredAutoRoom
 }
 
+#[derive(Default, Debug)]
+struct CleanUpDbResult {
+    pub not_a_guild_channel: Vec<i64>,
+    pub not_match_ids: Vec<i64>,
+    pub are_empty: Vec<i64>
+}
+
+impl CleanUpDbResult {
+    pub fn result(&self) -> Vec<i64> {
+        self.not_a_guild_channel
+            .iter()
+            .copied()
+            .chain(self.not_match_ids.iter().copied())
+            .chain(self.are_empty.iter().copied())
+            .collect()
+    }
+}
+
+
 pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
     tracing::info!("Starting cleanup monitored rooms");
     let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
@@ -56,7 +75,9 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
         .await
         .map_err(|err| err.to_string())?;
 
-    let mut ids_to_delete: Vec<i64> = Vec::new();
+    tracing::info!("Total monitored rooms {}", autorooms.len());
+
+    let mut cleanup_result = CleanUpDbResult::default();
     let mut tasks = FuturesUnordered::new();
 
     for room in autorooms {
@@ -81,12 +102,12 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
             let channel = match record.channel {
                 Some(_c) => _c,
                 None => {
-                    ids_to_delete.push(autoroom.channel_id);
+                    cleanup_result.not_a_guild_channel.push(autoroom.channel_id);
                     continue;
                 },
             };
             if channel.id.get() != autoroom.channel_id as u64 {
-                ids_to_delete.push(autoroom.channel_id);
+                cleanup_result.not_match_ids.push(autoroom.channel_id);
                 continue;
             };
 
@@ -94,14 +115,23 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
                 if n > 0 {
                     continue;
                 };
-                ids_to_delete.push(autoroom.channel_id);
+                cleanup_result.are_empty.push(autoroom.channel_id);
             };
         };
     };
 
+    let ids_to_delete = cleanup_result.result();
+
     match MonitoredAutoRoom::remove_many(&pool, &ids_to_delete).await {
         Ok(_) => {
-            tracing::info!("Cleanup db channels have been completed successfuly. Removed {} channels", ids_to_delete.len());
+            tracing::info!(
+                "Cleanup db channels have been completed successfuly.
+                Total cleaned {} channels, Not a guild {}, mismatch ids {}, discord channels removed {}",
+                ids_to_delete.len(),
+                cleanup_result.not_a_guild_channel.len(),
+                cleanup_result.not_match_ids.len(),
+                cleanup_result.are_empty.len()
+            );
             Ok(())
         },
         Err(err) => Err(err.to_string()),

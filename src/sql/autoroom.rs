@@ -60,8 +60,8 @@ impl AutoRoom {
         let query = match strategy {
             AutoRoomDeleteStrategy::SingleByChannelId(id) => sqlx::query("DELETE FROM autoroom WHERE channel_id = $1").bind(id),
             AutoRoomDeleteStrategy::SingleByCategoryId(id) => sqlx::query("DELETE FROM autoroom WHERE category_id = $1").bind(id),
-            AutoRoomDeleteStrategy::ManyByChannelId(ids) => sqlx::query("DELETE FROM autoroom WHERE channel_id in $1",).bind(ids),
-            AutoRoomDeleteStrategy::ManyByCategoryId(ids) => sqlx::query("DELETE FROM autoroom WHERE category_id in $1").bind(ids),
+            AutoRoomDeleteStrategy::ManyByChannelId(ids) => sqlx::query("DELETE FROM autoroom WHERE channel_id = ANY($1)",).bind(ids),
+            AutoRoomDeleteStrategy::ManyByCategoryId(ids) => sqlx::query("DELETE FROM autoroom WHERE category_id =  ANY($1)").bind(ids),
         };
 
         query
@@ -152,7 +152,7 @@ impl MonitoredAutoRoom {
 
     pub async fn remove_many(pool: &PgPool, ids: &Vec<i64>) -> Result<(), Error> {
         sqlx::query(
-            "DELETE from monitored_autoroom where channel_id in $1"
+            "DELETE from monitored_autoroom where channel_id = ANY($1)"
         )
         .bind(ids)
         .execute(pool)
