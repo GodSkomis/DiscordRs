@@ -126,7 +126,6 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
         }
     }
 
-    let are_empty_len = cleanup_result.are_empty.len();
     let are_empty_ids = cleanup_result.are_empty
             .iter()
             .map(|c| c.id.get() as i64)
@@ -141,7 +140,7 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
                 ids_to_delete.len(),
                 cleanup_result.not_a_guild_channel.len(),
                 cleanup_result.not_match_ids.len(),
-                are_empty_len
+                cleanup_result.are_empty.len()
             );
             Ok(())
         },
