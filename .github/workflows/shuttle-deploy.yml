@@ -3,7 +3,10 @@ name: Shuttle Deploy
 on:
   push:
     branches:
-      - shuttle
+      - master
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
