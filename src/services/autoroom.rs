@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use futures::{StreamExt, stream::FuturesUnordered};
-use serenity::all::{ ChannelId, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId};
+use serenity::all::{ ChannelId, Context, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId};
 
-use crate::{commands::CommandContext, sql::{autoroom::AutoRoomDeleteStrategy, prelude::{AutoRoom, MonitoredAutoRoom}}};
+use crate::sql::{pool::GLOBAL_SQL_POOL, prelude::MonitoredAutoRoom};
 
 
 pub async fn  grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
@@ -51,10 +49,10 @@ struct CleanUpDbRecord {
     autoroom: MonitoredAutoRoom
 }
 
-pub async fn cleanup_db_monitored_rooms(ctx: &CommandContext<'_>) -> Result<(), String> {
+pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
     tracing::info!("Starting cleanup monitored rooms");
-    let pool = &ctx.data().pool;
-    let autorooms = MonitoredAutoRoom::get_all(pool)
+    let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+    let autorooms = MonitoredAutoRoom::get_all(&pool)
         .await
         .map_err(|err| err.to_string())?;
 
@@ -101,69 +99,73 @@ pub async fn cleanup_db_monitored_rooms(ctx: &CommandContext<'_>) -> Result<(), 
         };
     };
 
-    match MonitoredAutoRoom::remove_many(pool, ids_to_delete).await {
-        Ok(_) => Ok(()),
+    match MonitoredAutoRoom::remove_many(&pool, &ids_to_delete).await {
+        Ok(_) => {
+            tracing::info!("Cleanup db channels have been completed successfuly. Removed {} channels", ids_to_delete.len());
+            Ok(())
+        },
         Err(err) => Err(err.to_string()),
     }
 }
 
-enum CleanUpCategoriesRecord {
-    Found(GuildChannel),
-    NotFound(i64)
-}
+// enum CleanUpCategoriesRecord {
+//     Found(GuildChannel),
+//     NotFound(i64)
+// }
 
-pub async fn cleanup_categories_monitored_rooms(ctx: &CommandContext<'_>) -> Result<(), String> {
-    tracing::info!("Starting categories cleanup monitored rooms");
-    let pool = &ctx.data().pool;
-    let category_ids = AutoRoom::get_all_category_ids(pool)
-        .await
-        .map_err(|err| err.to_string())?;
+// pub async fn cleanup_categories_monitored_rooms(ctx: &Context) -> Result<(), String> {
+//     tracing::info!("Starting categories cleanup monitored rooms");
+//     let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+//     let category_ids = AutoRoom::get_all_category_ids(&pool)
+//         .await
+//         .map_err(|err| err.to_string())?;
 
-    let mut tasks = FuturesUnordered::new();
+//     let mut tasks = FuturesUnordered::new();
 
-    let http = Arc::new(ctx.http());
-    for category_id in category_ids {
-        let http = http.clone();
-        tasks.push(async move {
-            match ChannelId::new(category_id as u64).to_channel(http).await {
-                Ok(c) => {
-                    if let Some(g) = c.guild() {
-                        return CleanUpCategoriesRecord::Found(g)
-                    };
-                    tracing::info!("Category({}) aren't a guild channel.", category_id);
-                    CleanUpCategoriesRecord::NotFound(category_id)
-                },
-                Err(err) => {
-                    tracing::info!("Category({}) not found.\nError: {}", category_id, err.to_string());
-                    CleanUpCategoriesRecord::NotFound(category_id)
-                }
-            }
-        });
-    }
+//     let http = &ctx.http;
+//     for category_id in category_ids {
+//         let http = http.clone();
+//         tasks.push(async move {
+//             match ChannelId::new(category_id as u64).to_channel(http).await {
+//                 Ok(c) => {
+//                     if let Some(g) = c.guild() {
+//                         return CleanUpCategoriesRecord::Found(g)
+//                     };
+//                     tracing::info!("Category({}) aren't a guild channel.", category_id);
+//                     CleanUpCategoriesRecord::NotFound(category_id)
+//                 },
+//                 Err(err) => {
+//                     tracing::info!("Category({}) not found.\nError: {}", category_id, err.to_string());
+//                     CleanUpCategoriesRecord::NotFound(category_id)
+//                 }
+//             }
+//         });
+//     }
 
-    let mut categories_to_delete: Vec<i64> = Vec::new();
-    while let Some(result) = tasks.next().await {
-        match result {
-            CleanUpCategoriesRecord::NotFound(category_id) => {
-                categories_to_delete.push(category_id);
-            },
-            CleanUpCategoriesRecord::Found(category) => {
-                if category.member_count.unwrap_or(0u8) == 0u8 {
-                    category.delete(&ctx).await.map_err(|err| err.to_string())?;
-                    categories_to_delete.push(category.id.get() as i64);
-                }
-            },
-        };
-    }
+//     let mut categories_to_delete: Vec<i64> = Vec::new();
+//     while let Some(result) = tasks.next().await {
+//         match result {
+//             CleanUpCategoriesRecord::NotFound(category_id) => {
+//                 categories_to_delete.push(category_id);
+//             },
+//             CleanUpCategoriesRecord::Found(category) => {
+//                 if category.member_count.unwrap_or(0u8) == 0u8 { PIVO, here need to get all channels of each category
+//                     category.delete(&ctx).await.map_err(|err| err.to_string())?;
+//                     categories_to_delete.push(category.id.get() as i64);
+//                 }
+//             },
+//         };
+//     }
 
-    if !categories_to_delete.is_empty() {
-        AutoRoom::delete(
-            pool, 
-            AutoRoomDeleteStrategy::ManyByCategoryId(categories_to_delete)
-        )
-            .await
-            .map_err(|err| err.to_string())?;
-    }
+//     if !categories_to_delete.is_empty() {
+//         AutoRoom::delete(
+//             &pool, 
+//             AutoRoomDeleteStrategy::ManyByCategoryId(categories_to_delete)
+//         )
+//             .await
+//             .map_err(|err| err.to_string())?;
+//         tracing::info!("Removed {} categories", ids_to_delete.len());
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }

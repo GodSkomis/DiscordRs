@@ -1,5 +1,5 @@
-
 pub mod autoroom;
+
 
 pub mod prelude {
     use serenity::prelude::TypeMapKey;
@@ -19,3 +19,27 @@ pub mod prelude {
 }
 
 pub struct SerenityPool;
+
+
+pub mod pool {
+    use once_cell::sync::OnceCell;
+    use sqlx::{Pool, Postgres};
+
+    type PoolType = Pool<Postgres>;
+
+    pub struct SqlPool {
+        pool: PoolType
+    }
+
+    impl SqlPool {
+        pub fn get_pool(&self) -> PoolType {
+            self.pool.clone()
+        }
+
+        pub fn new(pool: PoolType) -> Self {
+            Self { pool }
+        }
+    }
+
+    pub static GLOBAL_SQL_POOL: OnceCell<SqlPool> = OnceCell::new();
+}

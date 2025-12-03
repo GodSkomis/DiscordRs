@@ -150,7 +150,7 @@ impl MonitoredAutoRoom {
         )
     }
 
-    pub async fn remove_many(pool: &PgPool, ids: Vec<i64>) -> Result<(), Error> {
+    pub async fn remove_many(pool: &PgPool, ids: &Vec<i64>) -> Result<(), Error> {
         sqlx::query(
             "DELETE from monitored_autoroom where channel_id in $1"
         )
