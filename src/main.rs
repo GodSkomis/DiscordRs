@@ -4,7 +4,6 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
-// use tracing::{error, info};
 
 mod voice;
 mod bitrate;
@@ -13,7 +12,7 @@ mod commands;
 pub mod services;
 
 use sqlx::PgPool;
-use voice::{create_proccessing, remove_proccessing, VoiceProccessing};
+use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
 
 struct Handler;
@@ -35,7 +34,8 @@ impl EventHandler for Handler {
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         create_proccessing(&ctx, &new).await;
         if let Some(voice_state) = old {
-            remove_proccessing(&ctx, &voice_state).await;
+            let err = remove_channel_by_voicestate(&ctx, &voice_state).await.unwrap_err();
+            tracing::error!(err);
         };
     }
 }

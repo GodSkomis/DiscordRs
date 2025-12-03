@@ -17,7 +17,7 @@ pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
 pub async fn invite(
     ctx: CommandContext<'_>,
     #[description = "Invite a user to the apparts"] user: serenity::User,
-    #[description = "Notify a user"] #[flag] notify: bool,
+    #[description = "Send a notify to user"] #[flag] notify: bool,
 ) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
 

@@ -9,6 +9,15 @@ pub struct AutoRoom {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
+pub enum AutoRoomDeleteStrategy {
+    SingleByChannelId(i64),
+    SingleByCategoryId(i64),
+    ManyByChannelId(Vec<i64>),
+    ManyByCategoryId(Vec<i64>)
+}
+
+#[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct MonitoredAutoRoom {
     pub channel_id: i64,
@@ -45,6 +54,30 @@ impl AutoRoom {
                     self.suffix
                 )
             );
+    }
+    
+    pub async fn delete(pool: &PgPool, strategy: AutoRoomDeleteStrategy) -> Result<(), Error> {
+        let query = match strategy {
+            AutoRoomDeleteStrategy::SingleByChannelId(id) => sqlx::query("DELETE FROM autoroom WHERE channel_id = $1").bind(id),
+            AutoRoomDeleteStrategy::SingleByCategoryId(id) => sqlx::query("DELETE FROM autoroom WHERE category_id = $1").bind(id),
+            AutoRoomDeleteStrategy::ManyByChannelId(ids) => sqlx::query("DELETE FROM autoroom WHERE channel_id in $1",).bind(ids),
+            AutoRoomDeleteStrategy::ManyByCategoryId(ids) => sqlx::query("DELETE FROM autoroom WHERE category_id in $1").bind(ids),
+        };
+
+        query
+            .execute(pool)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn get_all_category_ids(pool: &PgPool) -> Result<Vec<i64>, Error> {
+       Ok(
+            sqlx::query_scalar(
+                "SELECT category_id from autoroom"
+            )
+                .fetch_all(pool)
+                .await?
+        )
     }
 }
 
@@ -105,6 +138,26 @@ impl MonitoredAutoRoom {
                 _ => Err(err),
             },
         }
+    }
+
+    pub async fn get_all(pool: &PgPool) -> Result<Vec<Self>, Error> {
+       Ok(
+            sqlx::query_as::<_, Self>(
+                "SELECT channel_id, owner_id from monitored_autoroom"
+            )
+                .fetch_all(pool)
+                .await?
+        )
+    }
+
+    pub async fn remove_many(pool: &PgPool, ids: Vec<i64>) -> Result<(), Error> {
+        sqlx::query(
+            "DELETE from monitored_autoroom where channel_id in $1"
+        )
+        .bind(ids)
+        .execute(pool)
+        .await
+        .map(|_| ())
     }
 }
 
