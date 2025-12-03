@@ -79,12 +79,13 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
 
     let mut cleanup_result = CleanUpDbResult::default();
     let mut tasks = FuturesUnordered::new();
+    let http = &ctx.http;
+    let cache = &ctx.cache;
 
     for room in autorooms {
-        let ctx = ctx.clone();
 
         tasks.push(async move {
-            let channel = match ChannelId::new(room.channel_id as u64).to_channel(&ctx).await {
+            let channel = match ChannelId::new(room.channel_id as u64).to_channel(http).await {
                 Ok(c) => c,
                 Err(_) => return None,
             };
@@ -111,12 +112,11 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
                 continue;
             };
 
-            if let Some(n) = channel.member_count {
-                if n > 0 {
-                    continue;
-                };
-                cleanup_result.are_empty.push(autoroom.channel_id);
+            let members = channel.members(cache).map_err(|err| err.to_string())?;
+            if members.len() > 0 {
+                continue;
             };
+            cleanup_result.are_empty.push(autoroom.channel_id);
         };
     };
 
@@ -179,7 +179,11 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
 //                 categories_to_delete.push(category_id);
 //             },
 //             CleanUpCategoriesRecord::Found(category) => {
-//                 if category.member_count.unwrap_or(0u8) == 0u8 { PIVO, here need to get all channels of each category
+//                 PIVO, here need to get all channels of each category
+                    // let members = channel.members(cache).map_err(|err| err.to_string())?;
+                    //     if members.len() > 0 {
+                    //         continue;
+                    //     };
 //                     category.delete(&ctx).await.map_err(|err| err.to_string())?;
 //                     categories_to_delete.push(category.id.get() as i64);
 //                 }
