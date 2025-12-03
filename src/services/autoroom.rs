@@ -53,16 +53,15 @@ struct CleanUpDbRecord {
 struct CleanUpDbResult {
     pub not_a_guild_channel: Vec<i64>,
     pub not_match_ids: Vec<i64>,
-    pub are_empty: Vec<i64>
+    pub are_empty: Vec<GuildChannel>
 }
 
 impl CleanUpDbResult {
-    pub fn result(&self) -> Vec<i64> {
+    pub fn outdated(&self) -> Vec<i64> {
         self.not_a_guild_channel
             .iter()
             .copied()
             .chain(self.not_match_ids.iter().copied())
-            .chain(self.are_empty.iter().copied())
             .collect()
     }
 }
@@ -116,11 +115,23 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
             if members.len() > 0 {
                 continue;
             };
-            cleanup_result.are_empty.push(autoroom.channel_id);
+            cleanup_result.are_empty.push(channel);
         };
     };
 
-    let ids_to_delete = cleanup_result.result();
+    for channel in &cleanup_result.are_empty {
+        match channel.delete(http).await {
+            Ok(_) => (),
+            Err(_err) => tracing::error!("Error to delete channel ({}).\nError: {}", channel.id.get(), _err)
+        }
+    }
+
+    let are_empty_len = cleanup_result.are_empty.len();
+    let are_empty_ids = cleanup_result.are_empty
+            .iter()
+            .map(|c| c.id.get() as i64)
+            .collect();
+    let ids_to_delete = [cleanup_result.outdated(), are_empty_ids].concat();
 
     match MonitoredAutoRoom::remove_many(&pool, &ids_to_delete).await {
         Ok(_) => {
@@ -130,12 +141,13 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
                 ids_to_delete.len(),
                 cleanup_result.not_a_guild_channel.len(),
                 cleanup_result.not_match_ids.len(),
-                cleanup_result.are_empty.len()
+                are_empty_len
             );
             Ok(())
         },
         Err(err) => Err(err.to_string()),
     }
+
 }
 
 // enum CleanUpCategoriesRecord {
