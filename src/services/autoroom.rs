@@ -135,8 +135,7 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
     match MonitoredAutoRoom::remove_many(&pool, &ids_to_delete).await {
         Ok(_) => {
             tracing::info!(
-                "Cleanup db channels have been completed successfuly.
-                Total cleaned {} channels, Not a guild {}, mismatch ids {}, discord channels removed {}",
+                "[Cleanup DB] Completed | Cleaned: {} | Not a guild: {} | Mismatch IDs: {} | Discord removed: {}",
                 ids_to_delete.len(),
                 cleanup_result.not_a_guild_channel.len(),
                 cleanup_result.not_match_ids.len(),
