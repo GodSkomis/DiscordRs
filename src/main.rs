@@ -58,7 +58,9 @@ impl EventHandler for Handler {
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_runtime::Secrets] secrets: SecretStore,
-    #[shuttle_shared_db::Postgres] db: PgPool
+    #[shuttle_shared_db::Postgres(
+        local_uri = "postgres://user_h8d95wQdtFbz:cWL5XST8t2drfU6ibjkpjYifG3xdwzcJ@sharedpg-rds.shuttle.dev:5432/db_h8d95wQdtFbz"
+    )] db: PgPool
 ) -> shuttle_serenity::ShuttleSerenity {
     // Get the discord token set in `Secrets.toml`
     let token = secrets

@@ -133,7 +133,7 @@ impl MonitoredAutoRoom {
             INSERT INTO monitored_autoroom (channel_id, owner_id)
             SELECT * FROM UNNEST(
                 $1::BIGINT[],
-                $2::BIGINT[],
+                $2::BIGINT[]
             )
             ON CONFLICT (channel_id) DO NOTHING
             "#
