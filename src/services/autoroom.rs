@@ -1,7 +1,9 @@
-use futures::{StreamExt, stream::FuturesUnordered};
-use serenity::all::{ ChannelId, Context, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId};
+use std::collections::{HashMap, HashSet};
 
-use crate::sql::{pool::GLOBAL_SQL_POOL, prelude::MonitoredAutoRoom};
+use futures::{StreamExt, stream::FuturesUnordered};
+use serenity::all::{ ChannelId, Context, Guild, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId};
+
+use crate::sql::{autoroom::AutoRoomDeleteStrategy, pool::GLOBAL_SQL_POOL, prelude::{AutoRoom, MonitoredAutoRoom}};
 
 
 pub async fn  grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
@@ -148,68 +150,144 @@ pub async fn cleanup_db_monitored_rooms(ctx: &Context) -> Result<(), String> {
 
 }
 
-// enum CleanUpCategoriesRecord {
-//     Found(GuildChannel),
-//     NotFound(i64)
-// }
 
-// pub async fn cleanup_categories_monitored_rooms(ctx: &Context) -> Result<(), String> {
-//     tracing::info!("Starting categories cleanup monitored rooms");
-//     let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
-//     let category_ids = AutoRoom::get_all_category_ids(&pool)
-//         .await
-//         .map_err(|err| err.to_string())?;
+enum CleanUpCategoriesRecord {
+    Found(GuildChannel),
+    NotFound(i64)
+}
 
-//     let mut tasks = FuturesUnordered::new();
+struct CleanUpCategoriesGuild {
+    pub guild: Guild,
+    pub category_ids: HashSet<u64>
+}
 
-//     let http = &ctx.http;
-//     for category_id in category_ids {
-//         let http = http.clone();
-//         tasks.push(async move {
-//             match ChannelId::new(category_id as u64).to_channel(http).await {
-//                 Ok(c) => {
-//                     if let Some(g) = c.guild() {
-//                         return CleanUpCategoriesRecord::Found(g)
-//                     };
-//                     tracing::info!("Category({}) aren't a guild channel.", category_id);
-//                     CleanUpCategoriesRecord::NotFound(category_id)
-//                 },
-//                 Err(err) => {
-//                     tracing::info!("Category({}) not found.\nError: {}", category_id, err.to_string());
-//                     CleanUpCategoriesRecord::NotFound(category_id)
-//                 }
-//             }
-//         });
-//     }
+impl CleanUpCategoriesGuild {
+    pub fn new(guild:Guild, category_id: u64) -> Self {
+        let mut set = HashSet::new();
+        set.insert(category_id);
+        Self {
+            guild: guild,
+            category_ids: set,
+        }
+    }
+}
 
-//     let mut categories_to_delete: Vec<i64> = Vec::new();
-//     while let Some(result) = tasks.next().await {
-//         match result {
-//             CleanUpCategoriesRecord::NotFound(category_id) => {
-//                 categories_to_delete.push(category_id);
-//             },
-//             CleanUpCategoriesRecord::Found(category) => {
-//                 PIVO, here need to get all channels of each category
-                    // let members = channel.members(cache).map_err(|err| err.to_string())?;
-                    //     if members.len() > 0 {
-                    //         continue;
-                    //     };
-//                     category.delete(&ctx).await.map_err(|err| err.to_string())?;
-//                     categories_to_delete.push(category.id.get() as i64);
-//                 }
-//             },
-//         };
-//     }
+pub async fn cleanup_categories_monitored_rooms(ctx: &Context) -> Result<(), String> {
+    tracing::info!("Starting categories cleanup monitored rooms");
+    let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+    let category_ids = AutoRoom::get_all_category_ids(&pool)
+        .await
+        .map_err(|_err| _err.to_string())?;
+    tracing::info!("Total category count in autoroom {}", category_ids.len());
+    let mut tasks = FuturesUnordered::new();
 
-//     if !categories_to_delete.is_empty() {
-//         AutoRoom::delete(
-//             &pool, 
-//             AutoRoomDeleteStrategy::ManyByCategoryId(categories_to_delete)
-//         )
-//             .await
-//             .map_err(|err| err.to_string())?;
-//         tracing::info!("Removed {} categories", ids_to_delete.len());
-//     }
+    let http = &ctx.http;
+    for category_id in category_ids {
+        let http = http.clone();
+        tasks.push(async move {
+            match ChannelId::new(category_id as u64).to_channel(http).await {
+                Ok(c) => {
+                    if let Some(g) = c.guild() {
+                        if g.id.get() as i64 != category_id {
+                            tracing::error!(
+                                "[Category id missmatch]: [Discord({})] |[Db({})]",
+                                g.id.get(),
+                                category_id,
+                            );
+                            return CleanUpCategoriesRecord::NotFound(category_id)
+                        };
+                        return CleanUpCategoriesRecord::Found(g)
+                    };
+                    CleanUpCategoriesRecord::NotFound(category_id)
+                },
+                Err(err) => {
+                    tracing::error!("Category({}) not found.\nError: {}", category_id, err.to_string());
+                    CleanUpCategoriesRecord::NotFound(category_id)
+                }
+            }
+        });
+    }
 
-//     Ok(())
-// }
+    let mut outdated_categories: Vec<i64> = Vec::new();
+    let mut guilds: HashMap<u64, CleanUpCategoriesGuild> = HashMap::default();
+    while let Some(result) = tasks.next().await {
+        match result {
+            CleanUpCategoriesRecord::NotFound(category_id) => {
+                outdated_categories.push(category_id);
+            },
+            CleanUpCategoriesRecord::Found(category) => {
+                let guild: Guild = (*category
+                // let guild: CacheRef<'_, GuildId, Guild, Infallible> = category
+                    .guild(ctx)
+                    .expect("GuildChannel without guild")).clone();
+                let guild_id = guild.id.get().clone();
+                guilds.entry(guild_id)
+                    .or_insert_with(
+                        ||
+                        CleanUpCategoriesGuild::new(guild, category.id.get())
+                    )
+                    .category_ids
+                    .insert(category.id.get());
+            }
+        }
+    }
+
+    if !outdated_categories.is_empty() {
+        AutoRoom::delete(
+            &pool, 
+            AutoRoomDeleteStrategy::ManyByCategoryId(&outdated_categories)
+        )
+            .await
+            .map_err(|err| err.to_string())?;
+        tracing::info!("Removed ({}) outdated categories", outdated_categories.len());
+    }
+
+    if !guilds.is_empty() {
+        let channels: Vec<&GuildChannel> = guilds
+            .values()
+            .flat_map(
+                |g| g.guild.channels
+                    .iter()
+                    .map(|c| c.1)
+                    .filter(|c| c.parent_id.is_some())
+                    .filter(|c| g.category_ids.contains(&c.parent_id.unwrap().get()))
+            )
+            .collect();
+
+        let mut autorooms_to_insert: Vec<MonitoredAutoRoom> = Vec::new();
+        let mut channels_to_delete: Vec<&GuildChannel> = Vec::new();
+        let bot_id = ctx.cache.current_user().id;
+        for channel in channels {
+            let members = channel.members(ctx).map_err(|err| err.to_string())?;
+            if members.len() > 0 {
+                autorooms_to_insert.push(MonitoredAutoRoom {
+                    channel_id: channel.id.get() as i64,
+                    owner_id: (channel.owner_id.unwrap_or(bot_id)).get() as i64
+                });
+                continue;
+            }
+            channels_to_delete.push(&channel);
+
+        }
+
+        tracing::info!("[Cleanup categories] {} rooms to delete", channels_to_delete.len());
+        for channel in &channels_to_delete {
+            match channel.delete(ctx).await {
+                Ok(_) => (),
+                Err(err) => tracing::error!(
+                    "[Cleanup categories] channel({}) delete error:\n`{}`",
+                    channel.id.get(),
+                    err
+                )
+            };
+        }
+        tracing::info!("[Cleanup categories] {} rooms removed", channels_to_delete.len());
+
+        tracing::info!("[Cleanup categories] {} rooms to create", autorooms_to_insert.len());
+        MonitoredAutoRoom::insert_many(&pool, &autorooms_to_insert).await.map_err(|err| err.to_string())?;
+        tracing::info!("[Cleanup categories] {} rooms created", autorooms_to_insert.len());
+    }
+    
+    tracing::info!("[Cleanup categories] monitored rooms have been completed");
+    Ok(())
+}

@@ -8,16 +8,14 @@ pub struct AutoRoom {
     pub suffix: String
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
-pub enum AutoRoomDeleteStrategy {
+pub enum AutoRoomDeleteStrategy<'a> {
     SingleByChannelId(i64),
     SingleByCategoryId(i64),
-    ManyByChannelId(Vec<i64>),
-    ManyByCategoryId(Vec<i64>)
+    ManyByChannelId(&'a Vec<i64>),
+    ManyByCategoryId(&'a Vec<i64>)
 }
 
-#[allow(dead_code)]
 #[derive(Debug, FromRow)]
 pub struct MonitoredAutoRoom {
     pub channel_id: i64,
@@ -56,12 +54,12 @@ impl AutoRoom {
             );
     }
     
-    pub async fn delete(pool: &PgPool, strategy: AutoRoomDeleteStrategy) -> Result<(), Error> {
+    pub async fn delete(pool: &PgPool, strategy: AutoRoomDeleteStrategy<'_>) -> Result<(), Error> {
         let query = match strategy {
             AutoRoomDeleteStrategy::SingleByChannelId(id) => sqlx::query("DELETE FROM autoroom WHERE channel_id = $1").bind(id),
             AutoRoomDeleteStrategy::SingleByCategoryId(id) => sqlx::query("DELETE FROM autoroom WHERE category_id = $1").bind(id),
             AutoRoomDeleteStrategy::ManyByChannelId(ids) => sqlx::query("DELETE FROM autoroom WHERE channel_id = ANY($1)",).bind(ids),
-            AutoRoomDeleteStrategy::ManyByCategoryId(ids) => sqlx::query("DELETE FROM autoroom WHERE category_id =  ANY($1)").bind(ids),
+            AutoRoomDeleteStrategy::ManyByCategoryId(ids) => sqlx::query("DELETE FROM autoroom WHERE category_id = ANY($1)").bind(ids),
         };
 
         query
@@ -125,6 +123,27 @@ impl MonitoredAutoRoom {
                     owner_id
                 )
             );
+    }
+
+    pub async fn insert_many(pool: &PgPool, data: &Vec<Self>) -> Result<(), Error> {
+        let channel_ids: Vec<i64> = data.iter().map(|a| a.channel_id).collect();
+        let owner_ids: Vec<i64> = data.iter().map(|a| a.owner_id).collect();
+        sqlx::query(
+            r#"
+            INSERT INTO monitored_autoroom (channel_id, owner_id)
+            SELECT * FROM UNNEST(
+                $1::BIGINT[],
+                $2::BIGINT[],
+            )
+            ON CONFLICT (channel_id) DO NOTHING
+            "#
+        )
+            .bind(&channel_ids)
+            .bind(&owner_ids)
+            .execute(pool)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn get_by_owner_id(pool: &PgPool, owner_id: i64) -> Result<Option<Self>, Error> {
