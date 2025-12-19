@@ -1,26 +1,14 @@
-# ---------- build stage ----------
 FROM rust:1.90.0 as builder
 
-WORKDIR /app
+WORKDIR /usr/src/app
+COPY . .
 
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-RUN rm -rf src
-
-COPY src ./src
 RUN cargo build --release
 
-# ---------- runtime stage ----------
 FROM debian:bookworm-slim
 
-# TLS
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+COPY --from=builder /usr/src/app/target/release/discord-bot /usr/local/bin/discord-bot
 
-COPY --from=builder /app/target/release/discord-bot /app/bot
-
-CMD ["./bot"]
+CMD ["discord-bot"]
