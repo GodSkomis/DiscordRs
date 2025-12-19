@@ -3,6 +3,16 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use dotenv::dotenv;
+use sqlx::postgres::PgPoolOptions;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
+use axum::{
+    routing::get,
+    Router,
+    response::IntoResponse,
+    http::StatusCode,
+};
+use std::net::SocketAddr;
 
 mod voice;
 mod bitrate;
@@ -10,9 +20,6 @@ mod sql;
 mod commands;
 pub mod services;
 
-use sqlx::postgres::PgPoolOptions;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
 use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
 
@@ -54,6 +61,10 @@ impl EventHandler for Handler {
             tracing::error!(err);
         };
     }
+}
+
+async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, "OK")
 }
 
 #[tokio::main]
@@ -114,9 +125,21 @@ async fn main() {
         let mut data = client.data.write().await;
         data.insert::<SerenityPool>(db.clone());
     };
+    
+    tokio::spawn(async {
+        let app = Router::new()
+            .route("/", get(health_check))
+            .route("/kaithheathcheck", get(health_check));
+
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+        tracing::info!("Enabling axum heartbeat");
+        axum::serve(listener, app).await.unwrap();
+    });
 
     if let Err(why) = client.start().await {
         tracing::info!("Client error: {:?}", why);
     };
+
+
 
 }
