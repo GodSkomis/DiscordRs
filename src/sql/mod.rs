@@ -3,7 +3,9 @@ pub mod autoroom;
 
 pub mod prelude {
     use serenity::prelude::TypeMapKey;
-    use sqlx::PgPool;
+    use sqlx::{Error, PgPool};
+
+    use crate::sql::autoroom::table_builder::CreateTable;
 
     pub use super::autoroom::{AutoRoom, MonitoredAutoRoom};
     use super::SerenityPool;
@@ -12,9 +14,11 @@ pub mod prelude {
         type Value = PgPool;
     }
 
-    pub async fn create_tables(pool : &PgPool) {
-        AutoRoom::create_table(pool).await;
-        MonitoredAutoRoom::create_table(pool).await;
+    pub async fn create_tables(pool : &PgPool) -> Result<(), Error> {
+        AutoRoom::create_table(pool).await?;
+        MonitoredAutoRoom::create_table(pool).await?;
+
+        Ok(())
     }
 }
 

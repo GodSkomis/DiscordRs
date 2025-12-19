@@ -86,7 +86,7 @@ async fn main() {
     if let Err(err) = create_tables(&db).await {
         tracing::error!("Error while creationg sql tables. Finishing...\n Error: `{}`", err);
         return;
-    }
+    };
     tracing::info!("Table creation has been completed");
 
     match GLOBAL_SQL_POOL.set(SqlPool::new(db.clone())) {

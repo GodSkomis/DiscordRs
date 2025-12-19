@@ -180,12 +180,31 @@ impl MonitoredAutoRoom {
     }
 }
 
-mod table_builder {
-    use sqlx::PgPool;
-    use super::{AutoRoom, MonitoredAutoRoom};
+#[derive(Debug, FromRow)]
+pub struct PermamentAutoRoom {
+    pub owner_id: i64,
+    pub channel_id: i64,
+    pub placement_category_id: i64,
+    pub storage_category_id: i64
+}
 
-    impl AutoRoom {
-        pub async fn create_table(pool : &PgPool) {
+impl PermamentAutoRoom {
+    
+}
+
+pub mod table_builder {
+    use async_trait::async_trait;
+    use sqlx::{Error, PgPool, postgres::PgQueryResult};
+    use super::{ AutoRoom, MonitoredAutoRoom };
+
+    #[async_trait]
+    pub trait CreateTable {
+        async fn create_table(pool : &PgPool) -> Result<PgQueryResult, Error>;
+    }
+
+    #[async_trait]
+    impl CreateTable for AutoRoom {
+        async fn create_table(pool : &PgPool) -> Result<PgQueryResult, Error> {
             sqlx::query(
                 r#"
                     CREATE TABLE IF NOT EXISTS autoroom (
@@ -198,11 +217,12 @@ mod table_builder {
             )
             .execute(pool)
             .await
-            .expect("Failed to create autoroom table");
         }
     }
-    impl MonitoredAutoRoom {
-        pub async fn create_table(pool : &PgPool) {
+
+    #[async_trait]
+    impl CreateTable for MonitoredAutoRoom {
+        async fn create_table(pool : &PgPool) -> Result<PgQueryResult, Error> {
             sqlx::query(
                 r#"
                     CREATE TABLE IF NOT EXISTS monitored_autoroom (
@@ -213,7 +233,6 @@ mod table_builder {
             )
             .execute(pool)
             .await
-            .expect("Failed to create autoroom table");
         }
     }
 }
