@@ -119,7 +119,6 @@ async fn main() {
     if let Err(why) = client.start().await {
         tracing::info!("Client error: {:?}", why);
     };
-
-
+    tracing::info!("Finishing discord bot");
 
 }
