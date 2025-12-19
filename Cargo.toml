@@ -10,7 +10,7 @@ serenity = { version = "0.12.4", default-features = false, features = ["client",
 tokio = { version = "1.48.0", features = ["default", "rt-multi-thread"] }
 tracing = "0.1.44"
 bytes = { version = "1.11.0" }
-sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-native-tls", "macros"] }
+sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "macros"] }
 poise = { version = "0.6.1" }
 futures = "0.3.31"
 parking_lot = "0.12.5"
