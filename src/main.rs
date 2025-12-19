@@ -1,9 +1,7 @@
-use anyhow::Context as _;
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use shuttle_runtime::SecretStore;
 
 mod voice;
 mod bitrate;
@@ -11,7 +9,7 @@ mod sql;
 mod commands;
 pub mod services;
 
-use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
 
@@ -55,24 +53,25 @@ impl EventHandler for Handler {
     }
 }
 
-#[shuttle_runtime::main]
-async fn serenity(
-    #[shuttle_runtime::Secrets] secrets: SecretStore,
-    #[shuttle_shared_db::Postgres(
-        local_uri = "postgres://user_h8d95wQdtFbz:cWL5XST8t2drfU6ibjkpjYifG3xdwzcJ@sharedpg-rds.shuttle.dev:5432/db_h8d95wQdtFbz"
-    )] db: PgPool
-) -> shuttle_serenity::ShuttleSerenity {
+#[tokio::main]
+async fn main() {
     // Get the discord token set in `Secrets.toml`
-    let token = secrets
-        .get("DISCORD_TOKEN")
-        .context("'DISCORD_TOKEN' was not found")?;
+    let token = std::env::var("DISCORD_TOKEN").unwrap();
+
+    let db_url = std::env::var("POSTGRES_URI").unwrap();
+    let db = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&db_url).await.unwrap();
 
     // tracing::info!("Drop table has begun");
     // sqlx::query("DROP table monitored_autoroom").execute(&db).await.expect("Drop table 'monitored_autoroom' unsuccessful");
     // tracing::info!("Drop table has been completed");
 
     tracing::info!("Table creation has begun");
-    create_tables(&db).await;
+    if let Err(err) = create_tables(&db).await {
+        tracing::error!("Error while creationg sql tables. Finishing...\n Error: `{}`", err);
+        return;
+    }
     tracing::info!("Table creation has been completed");
 
     match GLOBAL_SQL_POOL.set(SqlPool::new(db.clone())) {
@@ -99,11 +98,10 @@ async fn serenity(
     {
         let mut data = client.data.write().await;
         data.insert::<SerenityPool>(db.clone());
-    }
+    };
 
     if let Err(why) = client.start().await {
         tracing::info!("Client error: {:?}", why);
-    }
+    };
 
-    Ok(client.into())
 }
