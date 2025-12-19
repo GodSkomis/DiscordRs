@@ -2,6 +2,7 @@ use serenity::{all::VoiceState, async_trait};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use dotenv::dotenv;
 
 mod voice;
 mod bitrate;
@@ -10,6 +11,8 @@ mod commands;
 pub mod services;
 
 use sqlx::postgres::PgPoolOptions;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
 use sql::{prelude::*, SerenityPool};
 
@@ -55,7 +58,19 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    // Get the discord token set in `Secrets.toml`
+    // a builder for `FmtSubscriber`.
+    let subscriber = FmtSubscriber::builder()
+        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
+        // will be written to stdout.
+        .with_max_level(Level::INFO)
+        // completes the builder.
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("setting default subscriber failed");
+
+    dotenv().ok();
+
     let token = std::env::var("DISCORD_TOKEN").unwrap();
 
     let db_url = std::env::var("POSTGRES_URI").unwrap();
