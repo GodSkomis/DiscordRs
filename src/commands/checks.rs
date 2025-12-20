@@ -1,3 +1,5 @@
+use serenity::all::GuildId;
+
 use crate::commands::{CommandContext, CommandError};
 
 
@@ -26,4 +28,12 @@ pub async fn is_admin_or_owner(ctx: CommandContext<'_>) -> Result<bool, CommandE
     }
 
     Ok(false)
+}
+
+pub async fn have_ctx_guild_id(ctx: CommandContext<'_>) -> Result<bool, CommandError> {
+    parse_ctx_guild_id(&ctx).map(|_| true)
+}
+
+pub fn parse_ctx_guild_id(ctx: &CommandContext<'_>) -> Result<GuildId, CommandError> {
+    ctx.guild_id().ok_or_else(|| "Call this command from guild".into())
 }

@@ -2,16 +2,14 @@ use poise::serenity_prelude as serenity;
 use ::serenity::all::{ChannelId, Mentionable};
 
 use crate::{
-    MonitoredAutoRoom,
-    services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges},
-    sql::autoroom::AutoRoom
+    MonitoredAutoRoom, services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges}, sql::autoroom::{AutoRoom, AutoRoomDeleteStrategy}
 };
 
 use super::{ CommandContext, CommandError };
-use super::checks::is_admin_or_owner;
+use super::checks::{ is_admin_or_owner, parse_ctx_guild_id, have_ctx_guild_id};
 
 
-#[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list"))]
+#[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list", "remove"))]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -80,10 +78,7 @@ pub async fn add(
         placement_category: serenity::GuildChannel,
     #[description = "Channel Suffix"] #[max_length = 10] suffix: Option<String>,
 ) -> Result<(), CommandError> {
-    let guild_id = match ctx.guild_id() {
-        Some(_id) => _id.get() as i64,
-        None => return Err("Call this command from guild".into())
-    };
+    let guild_id = parse_ctx_guild_id(&ctx)?;
     let pool = &ctx.data().pool;
     let channel_id = from_channel.id;
     let category_id = placement_category.id;
@@ -94,7 +89,7 @@ pub async fn add(
 
     let autoroom = AutoRoom {
         channel_id: channel_id.get() as i64,
-        guild_id: guild_id,
+        guild_id: guild_id.get() as i64,
         category_id: category_id.get() as i64,
         suffix: suffix.to_string() };
     if let Err(err) = autoroom.create(pool).await {
@@ -105,15 +100,12 @@ pub async fn add(
     Ok(())
 }
 
-#[poise::command(slash_command, check = "is_admin_or_owner")]
+#[poise::command(slash_command, check = "is_admin_or_owner", check = "have_ctx_guild_id")]
 pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
-    let guild_id = match ctx.guild_id() {
-        Some(_id) => _id.get() as i64,
-        None => return Err("Call this command from guild".into())
-    };
+    let guild_id = parse_ctx_guild_id(&ctx)?;
     
     let pool = &ctx.data().pool;
-    let autorooms = AutoRoom::get_guild_autorooms(pool, guild_id).await?;
+    let autorooms = AutoRoom::get_guild_autorooms(pool, guild_id.get() as i64).await?;
     let result = match autorooms.is_empty() {
         true => "Records not found".to_string(),
         false => {
@@ -126,5 +118,20 @@ pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     };
 
     ctx.say(result).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, check = "is_admin_or_owner", check = "have_ctx_guild_id")]
+pub async fn remove(
+    ctx: CommandContext<'_>,
+    #[description = "VoiceChannelto move from"]
+    #[channel_types("Voice")]
+        from_channel: serenity::GuildChannel
+) -> Result<(), CommandError> {
+    let pool = &ctx.data().pool;
+    AutoRoom::delete(
+        pool,
+        AutoRoomDeleteStrategy::SingleByChannelId(from_channel.id.get() as i64)
+    ).await?;
     Ok(())
 }
