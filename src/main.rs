@@ -4,8 +4,9 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_better_stack::{BetterStackLayer, BetterStackConfig};
 
 mod voice;
 mod bitrate;
@@ -56,20 +57,34 @@ impl EventHandler for Handler {
     }
 }
 
+fn configurate_logger() {
+    let ingesting_host = std::env::var("BETTER_STACK_INGESTING_HOST")
+        .expect("BETTER_STACK_INGESTING_HOST must be set");
+    let source_token = std::env::var("BETTER_STACK_SOURCE_TOKEN")
+        .expect("BETTER_STACK_SOURCE_TOKEN must be set");
+
+    tracing_subscriber::registry()
+        .with(BetterStackLayer::new(
+            BetterStackConfig::builder(ingesting_host, source_token).build()
+        ))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .compact()
+        )
+        .with(EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .with_env_var("LOG_LEVEL")
+            .from_env_lossy()
+        )
+        .init();
+}
+
 #[tokio::main]
 async fn main() {
-    // a builder for `FmtSubscriber`.
-    let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
-        .with_max_level(Level::INFO)
-        // completes the builder.
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
-
     dotenv().ok();
+
+    configurate_logger();
 
     let token = std::env::var("DISCORD_TOKEN").unwrap();
 
