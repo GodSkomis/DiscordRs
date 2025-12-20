@@ -1,12 +1,12 @@
 use poise::serenity_prelude as serenity;
 use ::serenity::all::{ChannelId, Mentionable};
 
-use crate::{services::autoroom::grant_guest_privileges, MonitoredAutoRoom};
+use crate::{MonitoredAutoRoom, services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges}};
 
 use super::{ CommandContext, CommandError };
 
 
-#[poise::command(slash_command, subcommands("invite"))]
+#[poise::command(slash_command, subcommands("invite", "cleanup"))]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -44,6 +44,20 @@ pub async fn invite(
             "{} has been successfully invited",
             &user_info
         )
+    ).await?;
+
+    Ok(())
+}
+
+#[poise::command(slash_command, owners_only)]
+pub async fn cleanup(ctx: CommandContext<'_>) -> Result<(), CommandError> {
+    let handle = ctx.say("Starting cleanup").await?;
+
+    cleanup_db_monitored_rooms(ctx.serenity_context()).await?;
+    cleanup_categories_monitored_rooms(ctx.serenity_context()).await?;
+    
+    handle.edit(ctx, poise::CreateReply::default()
+        .content("Cleanup completed. Check logs for more information")
     ).await?;
 
     Ok(())
