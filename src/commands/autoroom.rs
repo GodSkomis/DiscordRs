@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::{ CommandContext, CommandError };
+use super::checks::is_admin_or_owner;
 
 
 #[poise::command(slash_command, subcommands("invite", "cleanup", "add"))]
@@ -53,6 +54,7 @@ pub async fn invite(
     Ok(())
 }
 
+// #[poise::command(slash_command, owners_only, global_cooldown = 3600)]
 #[poise::command(slash_command, owners_only)]
 pub async fn cleanup(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     let handle = ctx.say("Starting cleanup").await?;
@@ -67,7 +69,7 @@ pub async fn cleanup(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     Ok(())
 }
 
-#[poise::command(slash_command, owners_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, check = "is_admin_or_owner")]
 pub async fn add(
     ctx: CommandContext<'_>,
     #[description = "VoiceChannelto move from"]

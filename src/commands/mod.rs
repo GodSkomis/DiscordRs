@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 
 pub mod autoroom;
+pub mod checks;
 
 
 pub type CommandError = Box<dyn std::error::Error + Send + Sync>;
