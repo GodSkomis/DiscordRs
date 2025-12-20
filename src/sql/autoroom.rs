@@ -255,7 +255,7 @@ pub mod table_builder {
                 r#"
                     CREATE TABLE IF NOT EXISTS autoroom (
                         channel_id BIGINT PRIMARY KEY,
-                        guild_id BIGINT UNIQUE NOT NULL,
+                        guild_id BIGINT NOT NULL,
                         category_id BIGINT NOT NULL,
                         suffix VARCHAR(16) NOT NULL
                 )
