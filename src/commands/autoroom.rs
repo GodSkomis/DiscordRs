@@ -115,14 +115,14 @@ pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
     let autorooms = AutoRoom::get_guild_autorooms(pool, guild_id).await?;
     let result = match autorooms.is_empty() {
-        true => {
+        true => "Records not found".to_string(),
+        false => {
             autorooms
                 .iter()
                 .map(|room| room.to_display_string())
                 .collect::<Vec<String>>()
                 .join("\n")
         },
-        false => "Records not found".to_string(),
     };
 
     ctx.say(result).await?;
