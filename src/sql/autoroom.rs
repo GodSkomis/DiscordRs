@@ -36,22 +36,41 @@ impl AutoRoom {
         }
     }
 
-    pub async fn create(&self, pool: &PgPool) {
+    pub async fn create(&self, pool: &PgPool) -> Result<(), &'static str> {
         let query = "INSERT INTO autoroom (channel_id, category_id, suffix) VALUES ($1, $2, $3)";
-        sqlx::query(query)
+        tracing::info!(
+            "Inserting AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})",
+            self.channel_id,
+            self.category_id,
+            self.suffix
+        );
+        let result = sqlx::query(query)
             .bind(self.channel_id)
             .bind(self.category_id)
             .bind(self.suffix.clone())
             .execute(pool)
-            .await
-            .expect(
-                &format!(
-                    "Failed to insert AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})",
+            .await;
+
+        match result {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                tracing::error!(
+                    "Failed to insert AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})\nError: `{}`",
                     self.channel_id,
                     self.category_id,
-                    self.suffix
-                )
-            );
+                    self.suffix,
+                    err
+                );
+                if let sqlx::Error::Database(db_err) = err {
+                    // Unique Contraint error: Postgres "23505", MySQL "1062", SQLite "2067"
+                    if db_err.code() == Some("2067".into()) {
+                        return Err("Record with given Channel ID already exists")
+                    }
+                }
+                
+                Err("Internal Server Error")
+            }
+        }
     }
     
     pub async fn delete(pool: &PgPool, strategy: AutoRoomDeleteStrategy<'_>) -> Result<(), Error> {

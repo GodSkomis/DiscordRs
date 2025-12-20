@@ -1,5 +1,4 @@
 use serenity::{all::VoiceState, async_trait};
-use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use dotenv::dotenv;
@@ -14,7 +13,7 @@ mod sql;
 mod commands;
 pub mod services;
 
-use voice::{create_proccessing, remove_channel_by_voicestate, VoiceProccessing};
+use voice::{create_proccessing, remove_channel_by_voicestate};
 use sql::{prelude::*, SerenityPool};
 
 use crate::services::autoroom::cleanup_categories_monitored_rooms;
@@ -37,13 +36,13 @@ impl EventHandler for Handler {
         };
     }
 
-    async fn message(&self, ctx: Context, msg: Message) {
-        if let Some(response) = VoiceProccessing.proccess(&ctx, &msg).await {
-            if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
-                tracing::error!("Error sending message: {why:?}");
-            }
-        }
-    }
+    // async fn message(&self, ctx: Context, msg: Message) {
+    //     if let Some(response) = VoiceProccessing.proccess(&ctx, &msg).await {
+    //         if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
+    //             tracing::error!("Error sending message: {why:?}");
+    //         }
+    //     }
+    // }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         create_proccessing(&ctx, &new).await;

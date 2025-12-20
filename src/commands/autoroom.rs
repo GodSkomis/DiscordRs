@@ -1,12 +1,16 @@
 use poise::serenity_prelude as serenity;
 use ::serenity::all::{ChannelId, Mentionable};
 
-use crate::{MonitoredAutoRoom, services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges}};
+use crate::{
+    MonitoredAutoRoom,
+    services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges},
+    sql::autoroom::AutoRoom
+};
 
 use super::{ CommandContext, CommandError };
 
 
-#[poise::command(slash_command, subcommands("invite", "cleanup"))]
+#[poise::command(slash_command, subcommands("invite", "cleanup", "add"))]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -60,5 +64,33 @@ pub async fn cleanup(ctx: CommandContext<'_>) -> Result<(), CommandError> {
         .content("Cleanup completed. Check logs for more information")
     ).await?;
 
+    Ok(())
+}
+
+#[poise::command(slash_command, owners_only, required_permissions = "ADMINISTRATOR")]
+pub async fn add(
+    ctx: CommandContext<'_>,
+    #[description = "VoiceChannelto move from"]
+    #[channel_types("Voice")]
+        from_channel: serenity::GuildChannel,
+    #[description = "Category to move to"]
+    #[channel_types("Category")]
+        placement_category: serenity::GuildChannel,
+    #[description = "Channel Suffix"] #[max_length = 10] suffix: Option<String>,
+) -> Result<(), CommandError> {
+    let pool = &ctx.data().pool;
+    let channel_id = from_channel.id;
+    let category_id = placement_category.id;
+    let suffix = match suffix {
+        Some(suffix) => suffix,
+        None => "room".to_string(),
+    };
+
+    let autoroom = AutoRoom { channel_id: channel_id.get() as i64, category_id: category_id.get() as i64, suffix: suffix.to_string() };
+    if let Err(err) = autoroom.create(pool).await {
+        return Err(err.into())
+    };
+
+    ctx.say(format!("Record was created! channel id: {}, category id: {}", channel_id, category_id)).await?;
     Ok(())
 }
