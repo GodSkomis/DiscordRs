@@ -122,7 +122,7 @@ pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
                 .collect::<Vec<String>>()
                 .join("\n")
         },
-        false => "Record not found".to_string(),
+        false => "Records not found".to_string(),
     };
 
     ctx.say(result).await?;
