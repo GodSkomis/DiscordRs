@@ -4,10 +4,12 @@ use sqlx::{Error, FromRow, PgPool, Row};
 #[derive(Debug, FromRow)]
 pub struct AutoRoom {
     pub channel_id: i64,
+    pub guild_id: i64,
     pub category_id: i64,
     pub suffix: String
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum AutoRoomDeleteStrategy<'a> {
     SingleByChannelId(i64),
@@ -24,7 +26,7 @@ pub struct MonitoredAutoRoom {
 
 impl AutoRoom {
     pub async fn get_by_channel_id(pool: &PgPool, channel_id: i64) -> Result<Option<Self>, Error> {
-        match sqlx::query_as::<_, AutoRoom>("SELECT channel_id, category_id, suffix from autoroom WHERE channel_id = $1")
+        match sqlx::query_as::<_, AutoRoom>("SELECT channel_id, guild_id, category_id, suffix from autoroom WHERE channel_id = $1")
             .bind(channel_id)
             .fetch_one(pool)
             .await {
@@ -37,15 +39,17 @@ impl AutoRoom {
     }
 
     pub async fn create(&self, pool: &PgPool) -> Result<(), &'static str> {
-        let query = "INSERT INTO autoroom (channel_id, category_id, suffix) VALUES ($1, $2, $3)";
+        let query = "INSERT INTO autoroom (channel_id, guild_id, category_id, suffix) VALUES ($1, $2, $3, $4)";
         tracing::info!(
-            "Inserting AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})",
+            "Inserting AutoRoom, CHANNEL({}) GUILD({}) CATEGORY({}) SUFFIX({})",
             self.channel_id,
+            self.guild_id,
             self.category_id,
             self.suffix
         );
         let result = sqlx::query(query)
             .bind(self.channel_id)
+            .bind(self.guild_id)
             .bind(self.category_id)
             .bind(self.suffix.clone())
             .execute(pool)
@@ -55,15 +59,16 @@ impl AutoRoom {
             Ok(_) => Ok(()),
             Err(err) => {
                 tracing::error!(
-                    "Failed to insert AutoRoom, CHANNEL({}) CATEGORY({}) SUFFIX({})\nError: `{}`",
+                    "Failed to insert AutoRoom, CHANNEL({}) GUILD({}) CATEGORY({}) SUFFIX({})\nError: `{}`",
                     self.channel_id,
+                    self.guild_id,
                     self.category_id,
                     self.suffix,
                     err
                 );
                 if let sqlx::Error::Database(db_err) = err {
                     // Unique Contraint error: Postgres "23505", MySQL "1062", SQLite "2067"
-                    if db_err.code() == Some("2067".into()) {
+                    if db_err.code() == Some("23505".into()) {
                         return Err("Record with given Channel ID already exists")
                     }
                 }
@@ -227,8 +232,8 @@ pub mod table_builder {
             sqlx::query(
                 r#"
                     CREATE TABLE IF NOT EXISTS autoroom (
-                        id SERIAL PRIMARY KEY,
-                        channel_id BIGINT UNIQUE NOT NULL,
+                        channel_id BIGINT PRIMARY KEY,
+                        guild_id BIGINT UNIQUE NOT NULL,
                         category_id BIGINT NOT NULL,
                         suffix VARCHAR(16) NOT NULL
                 )

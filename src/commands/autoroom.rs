@@ -78,6 +78,10 @@ pub async fn add(
         placement_category: serenity::GuildChannel,
     #[description = "Channel Suffix"] #[max_length = 10] suffix: Option<String>,
 ) -> Result<(), CommandError> {
+    let guild_id = match ctx.guild_id() {
+        Some(_id) => _id.get() as i64,
+        None => return Err("Call this command from guild".into())
+    };
     let pool = &ctx.data().pool;
     let channel_id = from_channel.id;
     let category_id = placement_category.id;
@@ -86,7 +90,12 @@ pub async fn add(
         None => "room".to_string(),
     };
 
-    let autoroom = AutoRoom { channel_id: channel_id.get() as i64, category_id: category_id.get() as i64, suffix: suffix.to_string() };
+
+    let autoroom = AutoRoom {
+        channel_id: channel_id.get() as i64,
+        guild_id: guild_id,
+        category_id: category_id.get() as i64,
+        suffix: suffix.to_string() };
     if let Err(err) = autoroom.create(pool).await {
         return Err(err.into())
     };
