@@ -11,7 +11,7 @@ use super::{ CommandContext, CommandError };
 use super::checks::is_admin_or_owner;
 
 
-#[poise::command(slash_command, subcommands("invite", "cleanup", "add"))]
+#[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list"))]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -92,7 +92,6 @@ pub async fn add(
         None => "room".to_string(),
     };
 
-
     let autoroom = AutoRoom {
         channel_id: channel_id.get() as i64,
         guild_id: guild_id,
@@ -103,5 +102,29 @@ pub async fn add(
     };
 
     ctx.say(format!("Record was created! channel id: {}, category id: {}", channel_id, category_id)).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, check = "is_admin_or_owner")]
+pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
+    let guild_id = match ctx.guild_id() {
+        Some(_id) => _id.get() as i64,
+        None => return Err("Call this command from guild".into())
+    };
+    
+    let pool = &ctx.data().pool;
+    let autorooms = AutoRoom::get_guild_autorooms(pool, guild_id).await?;
+    let result = match autorooms.is_empty() {
+        true => {
+            autorooms
+                .iter()
+                .map(|room| room.to_display_string())
+                .collect::<Vec<String>>()
+                .join("\n")
+        },
+        false => "Record not found".to_string(),
+    };
+
+    ctx.say(result).await?;
     Ok(())
 }

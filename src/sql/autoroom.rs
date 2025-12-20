@@ -9,6 +9,17 @@ pub struct AutoRoom {
     pub suffix: String
 }
 
+impl AutoRoom {
+    pub fn to_display_string(&self) -> String {
+        format!(
+            "ChannelID: {}, Category: {}, Suffix: {}",
+            self.channel_id,
+            self.category_id,
+            self.suffix
+        )
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum AutoRoomDeleteStrategy<'a> {
@@ -90,6 +101,17 @@ impl AutoRoom {
             .execute(pool)
             .await
             .map(|_| ())
+    }
+
+    pub async fn get_guild_autorooms(pool: &PgPool, guild_id: i64) -> Result<Vec<Self>, Error> {
+        Ok(
+            sqlx::query_as::<_, Self>(
+                "SELECT * from autoroom WHERE guild_id = $1"
+            )
+                .bind(guild_id)
+                .fetch_all(pool)
+                .await?
+        )
     }
 
     pub async fn get_all_category_ids(pool: &PgPool) -> Result<Vec<i64>, Error> {
