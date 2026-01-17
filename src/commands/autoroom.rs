@@ -25,13 +25,12 @@ pub async fn invite(
     let pool = &ctx.data().pool;
 
     let author = ctx.author();
-    let err_msg = format!("The connected voice channel was not found");
     let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author.id.get() as i64).await {
         Ok(option) => match option {
             Some(monitored_autoroom_result) => monitored_autoroom_result,
-            None => return Err(CommandError::from(err_msg))
+            None => return Err(CommandError::from("The connected voice channel was not found"))
         },
-        Err(_) => return Err(CommandError::from(err_msg)),
+        Err(_) => return Err(CommandError::from("The connected voice channel was not found")),
     };
 
     let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
