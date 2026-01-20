@@ -227,6 +227,7 @@ impl MonitoredAutoRoom {
 }
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct PermamentAutoRoom {
     pub owner_id: i64,
     pub channel_id: i64,
