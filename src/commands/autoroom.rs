@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{ CommandContext, CommandError };
-use super::checks::{ is_admin_or_owner, parse_ctx_guild_id, have_ctx_guild_id};
+use super::checks::{ is_bot_or_guild_owner, parse_ctx_guild_id, have_ctx_guild_id};
 
 
 #[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list", "remove"))]
@@ -66,7 +66,7 @@ pub async fn cleanup(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     Ok(())
 }
 
-#[poise::command(slash_command, check = "is_admin_or_owner")]
+#[poise::command(slash_command, check = "is_bot_or_guild_owner")]
 pub async fn add(
     ctx: CommandContext<'_>,
     #[description = "VoiceChannelto move from"]
@@ -99,7 +99,7 @@ pub async fn add(
     Ok(())
 }
 
-#[poise::command(slash_command, check = "is_admin_or_owner", check = "have_ctx_guild_id")]
+#[poise::command(slash_command, check = "is_bot_or_guild_owner", check = "have_ctx_guild_id")]
 pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     let guild_id = parse_ctx_guild_id(&ctx)?;
     
@@ -120,7 +120,7 @@ pub async fn list(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     Ok(())
 }
 
-#[poise::command(slash_command, check = "is_admin_or_owner", check = "have_ctx_guild_id")]
+#[poise::command(slash_command, check = "is_bot_or_guild_owner", check = "have_ctx_guild_id")]
 pub async fn remove(
     ctx: CommandContext<'_>,
     #[description = "VoiceChannelto move from"]
