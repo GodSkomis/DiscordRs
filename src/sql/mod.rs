@@ -29,7 +29,7 @@ pub mod pool {
     use once_cell::sync::OnceCell;
     use sqlx::{Pool, Postgres};
 
-    type PoolType = Pool<Postgres>;
+    pub type PoolType = Pool<Postgres>;
 
     pub struct SqlPool {
         pool: PoolType

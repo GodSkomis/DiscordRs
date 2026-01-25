@@ -1,3 +1,5 @@
+use poise::CreateReply;
+use serenity::all::InviteCreateEvent;
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -17,6 +19,7 @@ use voice::{create_proccessing, remove_channel_by_voicestate};
 use sql::{prelude::*, SerenityPool};
 
 use crate::services::autoroom::cleanup_categories_monitored_rooms;
+use crate::services::autoroom::voice_channel::invite_user;
 use crate::sql::pool::SqlPool;
 use crate::{services::autoroom::cleanup_db_monitored_rooms, sql::pool::GLOBAL_SQL_POOL};
 
@@ -53,6 +56,19 @@ impl EventHandler for Handler {
             };
             tracing::error!(err);
         };
+    }
+
+    async fn invite_create(&self, ctx: Context, data: InviteCreateEvent) {
+        tracing::info!("Enter invite create");
+        if data.guild_id.is_none() {
+            return
+        }
+        tracing::info!("Guild checked");
+        if let (Some(author), Some(user)) = (data.inviter, data.target_user) {
+            tracing::info!("Double user checked");
+            let pool = &GLOBAL_SQL_POOL.get().unwrap().get_pool();
+            let _ = invite_user(ctx.http(), pool, author.id.get() as i64, &user).await;
+        }
     }
 }
 
@@ -115,8 +131,9 @@ async fn main() {
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_VOICE_STATES
-            | GatewayIntents::DIRECT_MESSAGES
-                | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_INVITES;
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)

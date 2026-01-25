@@ -46,6 +46,49 @@ pub async fn  grant_guest_privileges(http: &Http, channel: &ChannelId, user_id: 
     Ok(())
 }
 
+
+pub mod voice_channel {
+    use serenity::all::{ChannelId, Http, User};
+
+    use crate::sql::{pool::PoolType, prelude::MonitoredAutoRoom};
+    use super::grant_guest_privileges;
+
+    #[derive(thiserror::Error, Debug)]
+    pub enum InviteError {
+        #[error("The connected voice channel was not found")]
+        MonitoredAutoRoomNotFound,
+
+        #[error("Internal server error. Please try again later")]
+        DatabaseError,
+
+        #[error("Could not reach Discord. Please try again later")]
+        SerenityError,
+    }
+
+    pub async fn invite_user(http: &Http, pool: &PoolType, author_id: i64, invited_user: &User) -> Result<(), InviteError> {
+        let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author_id).await {
+            Ok(option) => match option {
+                Some(monitored_autoroom_result) => monitored_autoroom_result,
+                None => return Err(InviteError::MonitoredAutoRoomNotFound)
+            },
+            Err(err) => {
+                tracing::error!("invite_user database error AUTHOR({}) INVITED({}).\n{}", author_id, invited_user, err);
+                return Err(InviteError::DatabaseError)
+            },
+        };
+
+        let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
+        grant_guest_privileges(http, &channel_id, &invited_user.id)
+            .await
+            .map_err(|err| {
+                tracing::error!("invite_user serenity error AUTHOR({}) INVITED({}).\n{}", author_id, invited_user, err);
+                InviteError::SerenityError
+            })?;
+
+        Ok(())
+    }
+}
+
 struct CleanUpDbRecord {
     channel: Option<GuildChannel>,
     autoroom: MonitoredAutoRoom

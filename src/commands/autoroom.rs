@@ -1,8 +1,8 @@
-use poise::serenity_prelude as serenity;
-use ::serenity::all::{ChannelId, Mentionable};
+use poise::{CreateReply, serenity_prelude as serenity};
+use ::serenity::all::Mentionable;
 
 use crate::{
-    MonitoredAutoRoom, services::autoroom::{cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, grant_guest_privileges}, sql::autoroom::{AutoRoom, AutoRoomDeleteStrategy}
+    services::autoroom::{self, cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms}, sql::autoroom::{AutoRoom, AutoRoomDeleteStrategy}
 };
 
 use super::{ CommandContext, CommandError };
@@ -15,31 +15,20 @@ pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     Ok(())
 }
 
-// #[poise::command(slash_command, prefix_command)]
 #[poise::command(slash_command)]
 pub async fn invite(
     ctx: CommandContext<'_>,
     #[description = "Invite a user to the connected voice channel"] user: serenity::User,
 ) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
-
     let author = ctx.author();
-    let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author.id.get() as i64).await {
-        Ok(option) => match option {
-            Some(monitored_autoroom_result) => monitored_autoroom_result,
-            None => return Err(CommandError::from("The connected voice channel was not found"))
-        },
-        Err(_) => return Err(CommandError::from("The connected voice channel was not found")),
-    };
-
-    let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
-    grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await?;
     
-    ctx.say(
-        &format!(
-            "{} has been successfully invited",
-            &user.mention().to_string()
-        )
+    autoroom::voice_channel::invite_user(ctx.http(), pool, author.id.get() as i64, &user).await?;
+
+    ctx.send(
+        CreateReply::default()
+            .content(format!("{} has been successfully invited", &user.mention().to_string()))
+            .ephemeral(false)
     ).await?;
 
     Ok(())

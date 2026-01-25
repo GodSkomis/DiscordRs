@@ -18,7 +18,9 @@ pub async fn generate_commands_framework(pool: PgPool) -> poise::Framework<Comma
             //     prefix: Some("!".into()),
             //     ..Default::default()
             // },
-            commands: vec![autoroom::autoroom()],
+            commands: vec![
+                autoroom::autoroom(),
+            ],
             ..Default::default()
         })
         .setup(|ctx, _ready, framework| {
