@@ -193,7 +193,7 @@ impl MonitoredAutoRoom {
     }
 
     pub async fn get_by_owner_id(pool: &PgPool, owner_id: i64) -> Result<Option<Self>, Error> {
-        match sqlx::query_as::<_, Self>("SELECT channel_id, owner_id from monitored_autoroom WHERE owner_id = $1")
+        match sqlx::query_as::<_, Self>("SELECT channel_id, owner_id FROM monitored_autoroom WHERE owner_id = $1 ORDER BY channel_id DESC LIMIT 1")
             .bind(owner_id)
             .fetch_one(pool)
             .await {
