@@ -19,8 +19,7 @@ pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
 #[poise::command(slash_command)]
 pub async fn invite(
     ctx: CommandContext<'_>,
-    #[description = "Invite a user to the apparts"] user: serenity::User,
-    #[description = "Send a notify to user"] #[flag] notify: bool,
+    #[description = "Invite a user to the connected voice channel"] user: serenity::User,
 ) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
 
@@ -35,16 +34,11 @@ pub async fn invite(
 
     let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
     grant_guest_privileges(&ctx.http(), &channel_id, &user.id).await?;
-
-    let user_info = match notify {
-        true => user.mention().to_string(),
-        false => user.name,
-    };
     
     ctx.say(
         &format!(
             "{} has been successfully invited",
-            &user_info
+            &user.mention().to_string()
         )
     ).await?;
 
