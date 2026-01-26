@@ -20,6 +20,7 @@ pub async fn generate_commands_framework(pool: PgPool) -> poise::Framework<Comma
             // },
             commands: vec![
                 autoroom::autoroom(),
+                autoroom::context_invite(),
             ],
             ..Default::default()
         })

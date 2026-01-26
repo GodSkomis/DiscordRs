@@ -1,4 +1,3 @@
-use poise::CreateReply;
 use serenity::all::InviteCreateEvent;
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::gateway::Ready;
@@ -39,14 +38,6 @@ impl EventHandler for Handler {
         };
     }
 
-    // async fn message(&self, ctx: Context, msg: Message) {
-    //     if let Some(response) = VoiceProccessing.proccess(&ctx, &msg).await {
-    //         if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
-    //             tracing::error!("Error sending message: {why:?}");
-    //         }
-    //     }
-    // }
-
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         create_proccessing(&ctx, &new).await;
         if let Some(voice_state) = old {
@@ -59,15 +50,25 @@ impl EventHandler for Handler {
     }
 
     async fn invite_create(&self, ctx: Context, data: InviteCreateEvent) {
-        tracing::info!("Enter invite create");
-        if data.guild_id.is_none() {
-            return
-        }
-        tracing::info!("Guild checked");
-        if let (Some(author), Some(user)) = (data.inviter, data.target_user) {
-            tracing::info!("Double user checked");
-            let pool = &GLOBAL_SQL_POOL.get().unwrap().get_pool();
-            let _ = invite_user(ctx.http(), pool, author.id.get() as i64, &user).await;
+        if let Some(guild_id) = data.guild_id {
+            if let (Some(author), Some(user)) = (data.inviter, data.target_user) {
+                let pool = &GLOBAL_SQL_POOL.get().unwrap().get_pool();
+                match invite_user(ctx.http(), pool, author.id.get() as i64, &user).await {
+                    Ok(_) => tracing::info!(
+                        "Invite event, permissions gived.\nGUILD({}) INVITER({}) TARGET({})",
+                        guild_id,
+                        author,
+                        user
+                    ),
+                    Err(err) => tracing::error!(
+                        "Invite event, give permissions error.\nGUILD({}) INVITER({}) TARGET({})\n{}",
+                        guild_id,
+                        author,
+                        user,
+                        err
+                    ),
+                };
+            }
         }
     }
 }

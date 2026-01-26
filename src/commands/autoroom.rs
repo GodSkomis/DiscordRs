@@ -9,7 +9,7 @@ use super::{ CommandContext, CommandError };
 use super::checks::{ is_bot_or_guild_owner, parse_ctx_guild_id, have_ctx_guild_id};
 
 
-#[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list", "remove"))]
+#[poise::command(slash_command, subcommands("invite", "cleanup", "add", "list", "remove"), check = "have_ctx_guild_id")]
 pub async fn autoroom(ctx: CommandContext<'_>) -> Result<(), CommandError> {
     ctx.say(format!("Available commands: ({}, {})", "invite", "-")).await?;
     Ok(())
@@ -30,6 +30,25 @@ pub async fn invite(
             .content(format!("{} has been successfully invited", &user.mention().to_string()))
             .ephemeral(false)
     ).await?;
+
+    Ok(())
+}
+
+#[poise::command(context_menu_command = "Invite to PRIVATE Room", check = "have_ctx_guild_id")]
+pub async fn context_invite(
+    ctx: CommandContext<'_>,
+    #[description = "Invite a user to the connected voice channel"] user: serenity::User,
+) -> Result<(), CommandError> {
+    let pool = &ctx.data().pool;
+    let author = ctx.author();
+    
+    if let Err(err) = autoroom::voice_channel::invite_user(ctx.http(), pool, author.id.get() as i64, &user).await {
+        ctx.send(
+            CreateReply::default()
+                .content(format!("{}", err))
+                .ephemeral(true)
+        ).await?;
+    }
 
     Ok(())
 }
