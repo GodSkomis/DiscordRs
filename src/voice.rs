@@ -49,17 +49,18 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
 
                 if let Ok(channel) = channel_result {
-                    if let Err(_) = grant_owner_privileges(&ctx.http, &channel.id, &user_id).await {
-                        let _ = channel.delete(&ctx.http).await;
-                    }
 
-                    if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
+                     if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
                         tracing::error!(
                             "Failed to move the user({:?}) to the new voice channel({:?}). Error: \"{:?}\"",
                             &user_id.get(),
                             &channel.id.get(),
                             &why
                         );
+                    }
+
+                    if let Err(_) = grant_owner_privileges(&ctx.http, &channel.id, &user_id).await {
+                        let _ = channel.delete(&ctx.http).await;
                     }
                     
                     if let Err(err) = deploy_encoded_menu(

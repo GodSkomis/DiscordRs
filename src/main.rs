@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use once_cell::sync::OnceCell;
-use serenity::all::{ChannelId, ComponentInteractionDataKind, CreateInteractionResponse, CreateInteractionResponseMessage, Interaction, InviteCreateEvent, UserId};
+use serenity::all::{ChannelId, ComponentInteractionDataKind, CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse, Interaction, InviteCreateEvent, UserId};
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -119,12 +119,12 @@ impl EventHandler for Handler {
                                         };
                                     }
                                     
-                                    if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                        CreateInteractionResponseMessage::new().content("Choose a member").ephemeral(true)
-                                    )).await {
-                                        tracing::error!("{:?}", err);
-                                        return;
-                                    };
+                                    // if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                    //     CreateInteractionResponseMessage::new().content("Member not selected").ephemeral(true)
+                                    // )).await {
+                                    //     tracing::error!("{:?}", err);
+                                    //     return;
+                                    // };
                                 }
 
                         }
@@ -133,8 +133,8 @@ impl EventHandler for Handler {
                         if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
                             if let Some(target_id) = SELECTED_USER_STORE.get().unwrap().get(&owner) {
                                 if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
-                                            tracing::error!("{:?}", err);
-                                            return;
+                                    tracing::error!("{:?}", err);
+                                    return;
                                 };
 
                                 let target_id = *target_id;
@@ -155,11 +155,9 @@ impl EventHandler for Handler {
 
                                 SELECTED_USER_STORE.get().unwrap().remove(&owner);
                             } else {
-                                if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("⚠️ Choose a member!")
-                                        .ephemeral(true)
-                                )).await {
+                                if let Err(err) = mci.edit_response(&ctx.http, EditInteractionResponse::new()
+                                    .content("⚠️ Member not selected!")
+                                ).await {
                                     tracing::error!("{:?}", err);
                                     return;    
                                 };
