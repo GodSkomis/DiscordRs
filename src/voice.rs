@@ -5,6 +5,7 @@ use serenity::builder::CreateChannel;
 use serenity::client::Context;
 
 use crate::services::autoroom::grant_owner_privileges;
+use crate::services::autoroom::invite_modal::deploy_encoded_menu;
 
 use super::sql::SerenityPool;
 use super::sql::autoroom::{AutoRoom, MonitoredAutoRoom};
@@ -48,12 +49,10 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                 let channel_result = guild_id.create_channel(&ctx.http, builder).await;
 
                 if let Ok(channel) = channel_result {
-                    // Устанавливаем разрешения для пользователя
                     if let Err(_) = grant_owner_privileges(&ctx.http, &channel.id, &user_id).await {
                         let _ = channel.delete(&ctx.http).await;
                     }
 
-                    // Переносим пользователя в созданный канал
                     if let Err(why) = guild_id.move_member(&ctx.http, user_id, channel.id).await {
                         tracing::error!(
                             "Failed to move the user({:?}) to the new voice channel({:?}). Error: \"{:?}\"",
@@ -61,6 +60,19 @@ pub async fn create_proccessing(ctx: &Context, new: &VoiceState) {
                             &channel.id.get(),
                             &why
                         );
+                    }
+                    
+                    if let Err(err) = deploy_encoded_menu(
+                        ctx,
+                        channel.id,
+                        member.user.id,
+                    ).await {
+                        tracing::error!(
+                            "Failed to send_invite_user_modal.\nUser({:?}), Channel({:?})\nError: \"{:?}\"",
+                            member.user.id,
+                            channel,
+                            err
+                        )
                     }
 
                     MonitoredAutoRoom::new(

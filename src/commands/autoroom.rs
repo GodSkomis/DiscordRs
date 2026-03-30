@@ -37,7 +37,7 @@ pub async fn invite(
 #[poise::command(context_menu_command = "Invite to PRIVATE Room", check = "have_ctx_guild_id")]
 pub async fn context_invite(
     ctx: CommandContext<'_>,
-    #[description = "Invite a user to the connected voice channel"] user: serenity::User,
+    user: serenity::User
 ) -> Result<(), CommandError> {
     let pool = &ctx.data().pool;
     let author = ctx.author();

@@ -334,3 +334,40 @@ pub async fn cleanup_categories_monitored_rooms(ctx: &Context) -> Result<(), Str
     tracing::info!("[Cleanup categories] monitored rooms have been completed");
     Ok(())
 }
+
+
+pub mod invite_modal {
+    use serenity::all::{ButtonStyle, ChannelId, Context, CreateActionRow, CreateButton, CreateMessage, CreateSelectMenu, CreateSelectMenuKind, UserId};
+
+    pub async fn deploy_encoded_menu(
+        ctx: &Context, 
+        channel_id: ChannelId, 
+        creator_id: UserId
+    ) -> Result<(), serenity::Error> {
+        
+        let select_id = format!("inv_sel_{}_{}", creator_id, channel_id);
+        let button_id = format!("inv_inv_{}_{}", creator_id, channel_id);
+
+        let components = vec![
+            CreateActionRow::SelectMenu(
+                CreateSelectMenu::new(select_id, CreateSelectMenuKind::User { default_users: None })
+                    .placeholder("Choose a member")
+            ),
+            CreateActionRow::Buttons(vec![
+                CreateButton::new(button_id)
+                    .label("Invite")
+                    .style(ButtonStyle::Success),
+            ]),
+        ];
+
+        tracing::info!("Sending invite_modal to Channel ({:?})", channel_id);
+
+        channel_id.send_message(&ctx.http, 
+            CreateMessage::new()
+                .content("🛠 Channel Menu 🛠")
+                .components(components)
+        ).await?;
+
+        Ok(())
+    }
+}

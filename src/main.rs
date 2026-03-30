@@ -1,4 +1,6 @@
-use serenity::all::InviteCreateEvent;
+use dashmap::DashMap;
+use once_cell::sync::OnceCell;
+use serenity::all::{ChannelId, ComponentInteractionDataKind, CreateInteractionResponse, CreateInteractionResponseMessage, Interaction, InviteCreateEvent, UserId};
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -23,6 +25,10 @@ use crate::sql::pool::SqlPool;
 use crate::{services::autoroom::cleanup_db_monitored_rooms, sql::pool::GLOBAL_SQL_POOL};
 
 struct Handler;
+
+
+static SELECTED_USER_STORE: OnceCell<DashMap<UserId, UserId>> = OnceCell::new();
+
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -71,6 +77,102 @@ impl EventHandler for Handler {
             }
         }
     }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        // Нас интересуют только взаимодействия с компонентами (кнопки/меню)
+        if let Interaction::Component(mci) = interaction {
+            let custom_id = &mci.data.custom_id;
+
+            // 1. Проверяем префикс через starts_with
+            if custom_id.starts_with("inv_") {
+                
+                // Разделяем ID на части. 
+                // Ожидаемый формат: "inv_тип_ктоСоздал_какойКанал"
+                let parts: Vec<&str> = custom_id.split('_').collect();
+                
+                // Извлекаем тип действия (второй элемент после "inv")
+                let action_type = parts.get(1).copied().unwrap_or("");
+                
+                // Безопасно парсим ID пользователя и канала
+                let owner_id = parts.get(2).and_then(|s| s.parse::<u64>().ok()).map(UserId::new);
+                let channel_id = parts.get(3).and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new);
+
+                match action_type {
+                    "inv_sel" => {
+                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                            
+                                if mci.user.id != owner {
+                                    let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                        CreateInteractionResponseMessage::new().content("You aren't host of the room").ephemeral(true)
+                                    )).await;
+                                    return;
+                                }
+                            
+                                if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
+                                    if let Some(target_id) = values.first() {
+
+                                        SELECTED_USER_STORE.get().unwrap().insert(owner, *target_id);
+
+                                        if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                        };
+                                    }
+                                    
+                                    if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                        CreateInteractionResponseMessage::new().content("Choose a member").ephemeral(true)
+                                    )).await {
+                                        tracing::error!("{:?}", err);
+                                        return;
+                                    };
+                                }
+
+                        }
+                    }
+                    "inv_inv" => {
+                        if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                            if let Some(target_id) = SELECTED_USER_STORE.get().unwrap().get(&owner) {
+                                if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                };
+
+                                let target_id = *target_id;
+                                let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+
+                                let invited_user = match target_id.to_user(&ctx).await {
+                                    Ok(_user) => _user,
+                                    Err(err) => {
+                                        tracing::error!("{:?}", err);
+                                        return;
+                                    },
+                                };
+                                
+                                if let Err(err) = invite_user(&ctx.http, &pool, owner.get() as i64, &invited_user).await {
+                                    tracing::error!("{:?}", err);
+                                    return;    
+                                };
+
+                                SELECTED_USER_STORE.get().unwrap().remove(&owner);
+                            } else {
+                                if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                    CreateInteractionResponseMessage::new()
+                                        .content("⚠️ Choose a member!")
+                                        .ephemeral(true)
+                                )).await {
+                                    tracing::error!("{:?}", err);
+                                    return;    
+                                };
+                            }
+                        }
+                    },
+                    _ => {
+                        tracing::warn!("Unkown interaction id: {}", action_type);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn configurate_logger() {
@@ -78,6 +180,8 @@ fn configurate_logger() {
         .expect("BETTER_STACK_INGESTING_HOST must be set");
     let source_token = std::env::var("BETTER_STACK_SOURCE_TOKEN")
         .expect("BETTER_STACK_SOURCE_TOKEN must be set");
+
+    SELECTED_USER_STORE.set(DashMap::new()).unwrap();
 
     tracing_subscriber::registry()
         .with(BetterStackLayer::new(

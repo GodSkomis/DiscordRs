@@ -21,3 +21,4 @@ dotenv = "0.15.0"
 tracing-subscriber = { version = "0.3.22", features = ["default", "env-filter"] }
 tracing-better-stack = "0.1.0"
 thiserror = "2.0.18"
+dashmap = "6.1.0"
