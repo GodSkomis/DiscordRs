@@ -78,6 +78,9 @@ pub mod voice_channel {
         };
 
         let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
+        
+        tracing::info!("Invite User. Inviter({}) Invited({}) to Channel({})", author_id, invited_user.id.get(), channel_id.get());
+
         grant_guest_privileges(http, &channel_id, &invited_user.id)
             .await
             .map_err(|err| {

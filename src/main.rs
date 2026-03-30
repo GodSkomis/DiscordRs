@@ -1,6 +1,8 @@
-use dashmap::DashMap;
+use std::collections::HashMap;
+
 use once_cell::sync::OnceCell;
-use serenity::all::{ChannelId, ComponentInteractionDataKind, CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse, Interaction, InviteCreateEvent, UserId};
+use parking_lot::Mutex;
+use serenity::all::{ChannelId, ComponentInteractionDataKind, CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage, EditInteractionResponse, Interaction, InviteCreateEvent, UserId};
 use serenity::{all::VoiceState, async_trait};
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
@@ -9,6 +11,7 @@ use sqlx::postgres::PgPoolOptions;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, prelude::*};
 use tracing_better_stack::{BetterStackLayer, BetterStackConfig};
+
 
 mod voice;
 mod bitrate;
@@ -27,7 +30,7 @@ use crate::{services::autoroom::cleanup_db_monitored_rooms, sql::pool::GLOBAL_SQ
 struct Handler;
 
 
-static SELECTED_USER_STORE: OnceCell<DashMap<UserId, UserId>> = OnceCell::new();
+static SELECTED_USER_STORE: OnceCell<Mutex<HashMap<u64, u64>>> = OnceCell::new();
 
 
 #[async_trait]
@@ -82,6 +85,7 @@ impl EventHandler for Handler {
         // Нас интересуют только взаимодействия с компонентами (кнопки/меню)
         if let Interaction::Component(mci) = interaction {
             let custom_id = &mci.data.custom_id;
+            tracing::info!("interaction_create: {}", custom_id);
 
             // 1. Проверяем префикс через starts_with
             if custom_id.starts_with("inv_") {
@@ -103,17 +107,21 @@ impl EventHandler for Handler {
                             
                                 if mci.user.id != owner {
                                     let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                        CreateInteractionResponseMessage::new().content("You aren't host of the room").ephemeral(true)
+                                        CreateInteractionResponseMessage::new()
+                                            .content("You aren't host of the room")
+                                            .ephemeral(true)
                                     )).await;
                                     return;
                                 }
                             
                                 if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
                                     if let Some(target_id) = values.first() {
+                                        {
+                                            let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                            storage.insert(owner.get(), target_id.get());
+                                        }
 
-                                        SELECTED_USER_STORE.get().unwrap().insert(owner, *target_id);
-
-                                        if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
+                                        if let Err(err) = mci.defer(&ctx.http).await {
                                             tracing::error!("{:?}", err);
                                             return;
                                         };
@@ -131,13 +139,18 @@ impl EventHandler for Handler {
                     }
                     "inv" => {
                         if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
-                            if let Some(target_id) = SELECTED_USER_STORE.get().unwrap().get(&owner) {
-                                if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
+                            let storage_target: Option<u64>;
+                            {
+                                let storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                storage_target = storage.get(&owner.get()).copied();
+                            }
+                            if let Some(target_id) = storage_target {
+                                if let Err(err) = mci.defer(&ctx.http).await {
                                     tracing::error!("{:?}", err);
                                     return;
                                 };
 
-                                let target_id = *target_id;
+                                let target_id = UserId::new(target_id);
                                 let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
 
                                 let invited_user = match target_id.to_user(&ctx).await {
@@ -153,7 +166,33 @@ impl EventHandler for Handler {
                                     return;    
                                 };
 
-                                SELECTED_USER_STORE.get().unwrap().remove(&owner);
+                                if let Err(err) = mci
+                                    // .edit_response(
+                                    //     &ctx.http,
+                                    //     EditInteractionResponse::new()
+                                    //         .content(format!(
+                                    //             "{} has been successfully invited",
+                                    //             &invited_user.mention().to_string())
+                                    //         )
+                                    // )
+                                    // .await
+                                    .create_followup(
+                                        &ctx.http,
+                                        CreateInteractionResponseFollowup::new()
+                                            .content(format!(
+                                                    "{} has been successfully invited",
+                                                    &invited_user.mention().to_string())
+                                            )
+                                    ).await
+                                {
+                                    tracing::error!("{:?}", err);
+                                    return;
+                                }
+                                {
+                                    let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                    storage.remove(&owner.get());
+                                }
+                                
                             } else {
                                 if let Err(err) = mci.edit_response(&ctx.http, EditInteractionResponse::new()
                                     .content("⚠️ Member not selected!")
@@ -179,7 +218,7 @@ fn configurate_logger() {
     let source_token = std::env::var("BETTER_STACK_SOURCE_TOKEN")
         .expect("BETTER_STACK_SOURCE_TOKEN must be set");
 
-    SELECTED_USER_STORE.set(DashMap::new()).unwrap();
+    SELECTED_USER_STORE.set(Mutex::new(HashMap::new())).unwrap();
 
     tracing_subscriber::registry()
         .with(BetterStackLayer::new(
