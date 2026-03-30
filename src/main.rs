@@ -98,7 +98,7 @@ impl EventHandler for Handler {
                 let channel_id = parts.get(3).and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new);
 
                 match action_type {
-                    "inv_sel" => {
+                    "sel" => {
                             if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
                             
                                 if mci.user.id != owner {
@@ -129,7 +129,7 @@ impl EventHandler for Handler {
 
                         }
                     }
-                    "inv_inv" => {
+                    "inv" => {
                         if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
                             if let Some(target_id) = SELECTED_USER_STORE.get().unwrap().get(&owner) {
                                 if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Acknowledge).await {
