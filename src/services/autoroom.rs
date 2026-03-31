@@ -415,8 +415,6 @@ pub mod invite_modal {
                 CreateButton::new(invite_id)
                     .label("Invite")
                     .style(ButtonStyle::Success),
-            ]),
-            CreateActionRow::Buttons(vec![
                 CreateButton::new(kick_id)
                     .label("Kick")
                     .style(ButtonStyle::Danger),
