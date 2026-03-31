@@ -23,7 +23,7 @@ use voice::{create_proccessing, remove_channel_by_voicestate};
 use sql::{prelude::*, SerenityPool};
 
 use crate::services::autoroom::cleanup_categories_monitored_rooms;
-use crate::services::autoroom::voice_channel::invite_user;
+use crate::services::autoroom::voice_channel::{invite_user, kick_user};
 use crate::sql::pool::SqlPool;
 use crate::{services::autoroom::cleanup_db_monitored_rooms, sql::pool::GLOBAL_SQL_POOL};
 
@@ -82,129 +82,187 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        // Нас интересуют только взаимодействия с компонентами (кнопки/меню)
-        if let Interaction::Component(mci) = interaction {
-            let custom_id = &mci.data.custom_id;
-            tracing::info!("interaction_create: {}", custom_id);
+        if let Some(guild_id) = interaction.guild_id() {
+            if let Interaction::Component(mci) = interaction {
+                let custom_id = &mci.data.custom_id;
+                tracing::info!("interaction_create: {}", custom_id);
 
-            // 1. Проверяем префикс через starts_with
-            if custom_id.starts_with("inv_") {
-                
-                // Разделяем ID на части. 
-                // Ожидаемый формат: "inv_тип_ктоСоздал_какойКанал"
-                let parts: Vec<&str> = custom_id.split('_').collect();
-                
-                // Извлекаем тип действия (второй элемент после "inv")
-                let action_type = parts.get(1).copied().unwrap_or("");
-                
-                // Безопасно парсим ID пользователя и канала
-                let owner_id = parts.get(2).and_then(|s| s.parse::<u64>().ok()).map(UserId::new);
-                let channel_id = parts.get(3).and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new);
+                // 1. Проверяем префикс через starts_with
+                if custom_id.starts_with("inv_") {
+                    
+                    // Разделяем ID на части. 
+                    // Ожидаемый формат: "inv_тип_ктоСоздал_какойКанал"
+                    let parts: Vec<&str> = custom_id.split('_').collect();
+                    
+                    // Извлекаем тип действия (второй элемент после "inv")
+                    let action_type = parts.get(1).copied().unwrap_or("");
+                    
+                    // Безопасно парсим ID пользователя и канала
+                    let owner_id = parts.get(2).and_then(|s| s.parse::<u64>().ok()).map(UserId::new);
+                    let channel_id = parts.get(3).and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new);
 
-                match action_type {
-                    "sel" => {
-                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
-                            
-                                if mci.user.id != owner {
-                                    let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                        CreateInteractionResponseMessage::new()
-                                            .content("You aren't host of the room")
-                                            .ephemeral(true)
-                                    )).await;
-                                    return;
-                                }
-                            
-                                if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
-                                    if let Some(target_id) = values.first() {
-                                        {
-                                            let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
-                                            storage.insert(owner.get(), target_id.get());
-                                        }
-
-                                        if let Err(err) = mci.defer(&ctx.http).await {
-                                            tracing::error!("{:?}", err);
-                                            return;
-                                        };
+                    match action_type {
+                        "sel" => {
+                                if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                                
+                                    if mci.user.id != owner {
+                                        let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                            CreateInteractionResponseMessage::new()
+                                                .content("You aren't host of the room")
+                                                .ephemeral(true)
+                                        )).await;
+                                        return;
                                     }
-                                    
-                                    // if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                    //     CreateInteractionResponseMessage::new().content("Member not selected").ephemeral(true)
-                                    // )).await {
-                                    //     tracing::error!("{:?}", err);
-                                    //     return;
-                                    // };
-                                }
+                                
+                                    if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
+                                        if let Some(target_id) = values.first() {
+                                            {
+                                                let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                                storage.insert(owner.get(), target_id.get());
+                                            }
 
-                        }
-                    }
-                    "inv" => {
-                        if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
-                            let storage_target: Option<u64>;
-                            {
-                                let storage = SELECTED_USER_STORE.get().unwrap().lock();
-                                storage_target = storage.get(&owner.get()).copied();
+                                            if let Err(err) = mci.defer(&ctx.http).await {
+                                                tracing::error!("{:?}", err);
+                                                return;
+                                            };
+                                        }
+                                        
+                                        // if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                        //     CreateInteractionResponseMessage::new().content("Member not selected").ephemeral(true)
+                                        // )).await {
+                                        //     tracing::error!("{:?}", err);
+                                        //     return;
+                                        // };
+                                    }
+
                             }
-                            if let Some(target_id) = storage_target {
-                                if let Err(err) = mci.defer(&ctx.http).await {
-                                    tracing::error!("{:?}", err);
-                                    return;
-                                };
-
-                                let target_id = UserId::new(target_id);
-                                let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
-
-                                let invited_user = match target_id.to_user(&ctx).await {
-                                    Ok(_user) => _user,
-                                    Err(err) => {
+                        },
+                        "inv" => {
+                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                                let storage_target: Option<u64>;
+                                {
+                                    let storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                    storage_target = storage.get(&owner.get()).copied();
+                                }
+                                if let Some(target_id) = storage_target {
+                                    if let Err(err) = mci.defer(&ctx.http).await {
                                         tracing::error!("{:?}", err);
                                         return;
-                                    },
-                                };
-                                
-                                if let Err(err) = invite_user(&ctx.http, &pool, owner.get() as i64, &invited_user).await {
-                                    tracing::error!("{:?}", err);
-                                    return;    
-                                };
+                                    };
 
-                                if let Err(err) = mci
-                                    // .edit_response(
-                                    //     &ctx.http,
-                                    //     EditInteractionResponse::new()
-                                    //         .content(format!(
-                                    //             "{} has been successfully invited",
-                                    //             &invited_user.mention().to_string())
-                                    //         )
-                                    // )
-                                    // .await
-                                    .create_followup(
-                                        &ctx.http,
-                                        CreateInteractionResponseFollowup::new()
-                                            .content(format!(
-                                                    "{} has been successfully invited",
-                                                    &invited_user.mention().to_string())
-                                            )
-                                    ).await
-                                {
-                                    tracing::error!("{:?}", err);
-                                    return;
+                                    let target_id = UserId::new(target_id);
+                                    let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+
+                                    let invited_user = match target_id.to_user(&ctx).await {
+                                        Ok(_user) => _user,
+                                        Err(err) => {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                        },
+                                    };
+                                    
+                                    if let Err(err) = invite_user(&ctx.http, &pool, owner.get() as i64, &invited_user).await {
+                                        tracing::error!("{:?}", err);
+                                        return;    
+                                    };
+
+                                    if let Err(err) = mci
+                                        // .edit_response(
+                                        //     &ctx.http,
+                                        //     EditInteractionResponse::new()
+                                        //         .content(format!(
+                                        //             "{} has been successfully invited",
+                                        //             &invited_user.mention().to_string())
+                                        //         )
+                                        // )
+                                        // .await
+                                        .create_followup(
+                                            &ctx.http,
+                                            CreateInteractionResponseFollowup::new()
+                                                .content(format!(
+                                                        "{} has been successfully invited",
+                                                        &invited_user.mention().to_string())
+                                                )
+                                        ).await
+                                    {
+                                        tracing::error!("{:?}", err);
+                                        return;
+                                    }
+                                } else {
+                                    if let Err(err) = mci.edit_response(&ctx.http, EditInteractionResponse::new()
+                                        .content("⚠️ Member not selected!")
+                                    ).await {
+                                        tracing::error!("{:?}", err);
+                                        return;    
+                                    };
                                 }
-                                {
-                                    let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
-                                    storage.remove(&owner.get());
-                                }
-                                
-                            } else {
-                                if let Err(err) = mci.edit_response(&ctx.http, EditInteractionResponse::new()
-                                    .content("⚠️ Member not selected!")
-                                ).await {
-                                    tracing::error!("{:?}", err);
-                                    return;    
-                                };
                             }
+                        },
+                        "kick" => {
+                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                                let storage_target: Option<u64>;
+                                {
+                                    let storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                    storage_target = storage.get(&owner.get()).copied();
+                                }
+                                if let Some(target_id) = storage_target {
+                                    if let Err(err) = mci.defer(&ctx.http).await {
+                                        tracing::error!("{:?}", err);
+                                        return;
+                                    };
+
+                                    let target_id = UserId::new(target_id);
+                                    let pool = GLOBAL_SQL_POOL.get().unwrap().get_pool();
+
+                                    let user_to_kick = match target_id.to_user(&ctx).await {
+                                        Ok(_user) => _user,
+                                        Err(err) => {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                        },
+                                    };
+                                    
+                                    if let Err(err) = kick_user(&ctx.http, &pool, guild_id, owner.get() as i64, &user_to_kick).await {
+                                        tracing::error!("{:?}", err);
+                                        return;    
+                                    };
+
+                                    if let Err(err) = mci
+                                        // .edit_response(
+                                        //     &ctx.http,
+                                        //     EditInteractionResponse::new()
+                                        //         .content(format!(
+                                        //             "{} has been successfully invited",
+                                        //             &invited_user.mention().to_string())
+                                        //         )
+                                        // )
+                                        // .await
+                                        .create_followup(
+                                            &ctx.http,
+                                            CreateInteractionResponseFollowup::new()
+                                                .content(format!(
+                                                        "Member has been successfully invited"
+                                                    )
+                                                )
+                                        ).await
+                                    {
+                                        tracing::error!("{:?}", err);
+                                        return;
+                                    }
+                                    
+                                } else {
+                                    if let Err(err) = mci.edit_response(&ctx.http, EditInteractionResponse::new()
+                                        .content("⚠️ Member not selected!")
+                                    ).await {
+                                        tracing::error!("{:?}", err);
+                                        return;    
+                                    };
+                                }
+                            }
+                        },
+                        _ => {
+                            tracing::warn!("Unkown interaction id: {}", action_type);
                         }
-                    },
-                    _ => {
-                        tracing::warn!("Unkown interaction id: {}", action_type);
                     }
                 }
             }

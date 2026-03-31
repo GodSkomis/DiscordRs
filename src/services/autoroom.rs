@@ -6,7 +6,7 @@ use serenity::all::{ ChannelId, Context, Guild, GuildChannel, Http, PermissionOv
 use crate::sql::{autoroom::AutoRoomDeleteStrategy, pool::GLOBAL_SQL_POOL, prelude::{AutoRoom, MonitoredAutoRoom}};
 
 
-pub async fn  grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
+pub async fn grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
     let permissions = PermissionOverwrite {
         allow: Permissions::VIEW_CHANNEL
             | Permissions::SEND_MESSAGES
@@ -28,7 +28,7 @@ pub async fn  grant_owner_privileges(http: &Http, channel: &ChannelId, user_id: 
     Ok(())
 }
 
-pub async fn  grant_guest_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
+pub async fn grant_guest_privileges(http: &Http, channel: &ChannelId, user_id: &UserId) -> Result<(), serenity::Error> {
     let permissions = PermissionOverwrite {
         allow: Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES,
         deny: Permissions::empty(),
@@ -46,15 +46,35 @@ pub async fn  grant_guest_privileges(http: &Http, channel: &ChannelId, user_id: 
     Ok(())
 }
 
+pub async fn revoke_guest_privileges(
+    http: &Http, 
+    channel: &ChannelId, 
+    user_id: &UserId
+) -> Result<(), serenity::Error> {
+    let target = PermissionOverwriteType::Member(*user_id);
+
+    if let Err(err) = channel.delete_permission(http, target).await {
+        tracing::error!(
+            "Failed to revoke channel({:?}) permissions from user({:?}). Error: \"{:?}\"",
+            channel.get(),
+            user_id.get(),
+            &err
+        );
+        return Err(err);
+    }
+
+    Ok(())
+}
+
 
 pub mod voice_channel {
-    use serenity::all::{ChannelId, Http, User};
+    use serenity::all::{ChannelId, EditMember, GuildId, Http, User};
 
-    use crate::sql::{pool::PoolType, prelude::MonitoredAutoRoom};
+    use crate::{services::autoroom::revoke_guest_privileges, sql::{pool::PoolType, prelude::MonitoredAutoRoom}};
     use super::grant_guest_privileges;
 
     #[derive(thiserror::Error, Debug)]
-    pub enum InviteError {
+    pub enum BotError {
         #[error("The connected voice channel was not found")]
         MonitoredAutoRoomNotFound,
 
@@ -65,15 +85,15 @@ pub mod voice_channel {
         SerenityError,
     }
 
-    pub async fn invite_user(http: &Http, pool: &PoolType, author_id: i64, invited_user: &User) -> Result<(), InviteError> {
+    pub async fn invite_user(http: &Http, pool: &PoolType, author_id: i64, invited_user: &User) -> Result<(), BotError> {
         let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author_id).await {
             Ok(option) => match option {
                 Some(monitored_autoroom_result) => monitored_autoroom_result,
-                None => return Err(InviteError::MonitoredAutoRoomNotFound)
+                None => return Err(BotError::MonitoredAutoRoomNotFound)
             },
             Err(err) => {
                 tracing::error!("invite_user database error AUTHOR({}) INVITED({}).\n{}", author_id, invited_user, err);
-                return Err(InviteError::DatabaseError)
+                return Err(BotError::DatabaseError)
             },
         };
 
@@ -85,7 +105,41 @@ pub mod voice_channel {
             .await
             .map_err(|err| {
                 tracing::error!("invite_user serenity error AUTHOR({}) INVITED({}).\n{}", author_id, invited_user, err);
-                InviteError::SerenityError
+                BotError::SerenityError
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn kick_user(http: &Http, pool: &PoolType, guild_id: GuildId, author_id: i64, user_to_kick: &User) -> Result<(), BotError> {
+        let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author_id).await {
+            Ok(option) => match option {
+                Some(monitored_autoroom_result) => monitored_autoroom_result,
+                None => return Err(BotError::MonitoredAutoRoomNotFound)
+            },
+            Err(err) => {
+                tracing::error!("kick_user database error KICKER({}) KICKED({}).\n{}", author_id, user_to_kick, err);
+                return Err(BotError::DatabaseError)
+            },
+        };
+
+        let channel_id = ChannelId::new(monitored_autoroom.channel_id as u64);
+        
+        tracing::info!("Kick User. KICKER({}) KICKED({}) to CHANNEL({})", author_id, user_to_kick.id.get(), channel_id.get());
+
+        revoke_guest_privileges(http, &channel_id, &user_to_kick.id)
+            .await
+            .map_err(|err| {
+                tracing::error!("kick_user serenity error KICKER({}) KICKED({}).\n{}", author_id, user_to_kick, err);
+                BotError::SerenityError
+            })?;
+
+        guild_id
+            .edit_member(http, user_to_kick, EditMember::new().disconnect_member())
+            .await
+            .map_err(|err| {
+                tracing::error!("kick_user serenity error KICKER({}) KICKED({}).\n{}", author_id, user_to_kick, err);
+                BotError::SerenityError
             })?;
 
         Ok(())
@@ -349,7 +403,8 @@ pub mod invite_modal {
     ) -> Result<(), serenity::Error> {
         
         let select_id = format!("inv_sel_{}_{}", creator_id, channel_id);
-        let button_id = format!("inv_inv_{}_{}", creator_id, channel_id);
+        let invite_id = format!("inv_inv_{}_{}", creator_id, channel_id);
+        let kick_id = format!("inv_kick_{}_{}", creator_id, channel_id);
 
         let components = vec![
             CreateActionRow::SelectMenu(
@@ -357,9 +412,14 @@ pub mod invite_modal {
                     .placeholder("Choose a member")
             ),
             CreateActionRow::Buttons(vec![
-                CreateButton::new(button_id)
+                CreateButton::new(invite_id)
                     .label("Invite")
                     .style(ButtonStyle::Success),
+            ]),
+            CreateActionRow::Buttons(vec![
+                CreateButton::new(kick_id)
+                    .label("Kick")
+                    .style(ButtonStyle::Danger),
             ]),
         ];
 

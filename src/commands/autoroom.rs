@@ -34,6 +34,26 @@ pub async fn invite(
     Ok(())
 }
 
+#[poise::command(slash_command, check = "have_ctx_guild_id")]
+pub async fn kick(
+    ctx: CommandContext<'_>,
+    #[description = "Kick a user from the connected voice channel"] user: serenity::User,
+) -> Result<(), CommandError> {
+    let pool = &ctx.data().pool;
+    let author = ctx.author();
+    let guild_id = ctx.guild_id().unwrap();
+    
+    autoroom::voice_channel::kick_user(ctx.http(), pool, guild_id, author.id.get() as i64, &user).await?;
+
+    ctx.send(
+        CreateReply::default()
+            .content(format!("Member has been kicked"))
+            .ephemeral(false)
+    ).await?;
+
+    Ok(())
+}
+
 #[poise::command(context_menu_command = "Invite to PRIVATE Room", check = "have_ctx_guild_id")]
 pub async fn context_invite(
     ctx: CommandContext<'_>,
