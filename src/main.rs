@@ -101,44 +101,41 @@ impl EventHandler for Handler {
                     let owner_id = parts.get(2).and_then(|s| s.parse::<u64>().ok()).map(UserId::new);
                     let channel_id = parts.get(3).and_then(|s| s.parse::<u64>().ok()).map(ChannelId::new);
 
-                    match action_type {
-                        "sel" => {
-                                if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
-                                
-                                    if mci.user.id != owner {
-                                        let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                            CreateInteractionResponseMessage::new()
-                                                .content("You aren't host of the room")
-                                                .ephemeral(true)
-                                        )).await;
-                                        return;
-                                    }
-                                
-                                    if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
-                                        if let Some(target_id) = values.first() {
-                                            {
-                                                let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
-                                                storage.insert(owner.get(), target_id.get());
-                                            }
+                    if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
 
-                                            if let Err(err) = mci.defer(&ctx.http).await {
-                                                tracing::error!("{:?}", err);
-                                                return;
-                                            };
+                        if mci.user.id != owner {
+                            let _ = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("You aren't host of the room")
+                                    .ephemeral(true)
+                            )).await;
+                            return;
+                        }
+
+                        match action_type {
+                            "sel" => {
+                                if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
+                                    if let Some(target_id) = values.first() {
+                                        {
+                                            let mut storage = SELECTED_USER_STORE.get().unwrap().lock();
+                                            storage.insert(owner.get(), target_id.get());
                                         }
-                                        
-                                        // if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
-                                        //     CreateInteractionResponseMessage::new().content("Member not selected").ephemeral(true)
-                                        // )).await {
-                                        //     tracing::error!("{:?}", err);
-                                        //     return;
-                                        // };
-                                    }
 
-                            }
-                        },
-                        "inv" => {
-                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                                        if let Err(err) = mci.defer(&ctx.http).await {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                        };
+                                    }
+                                    
+                                    // if let Err(err) = mci.create_response(&ctx.http, CreateInteractionResponse::Message(
+                                    //     CreateInteractionResponseMessage::new().content("Member not selected").ephemeral(true)
+                                    // )).await {
+                                    //     tracing::error!("{:?}", err);
+                                    //     return;
+                                    // };
+                                }
+                            },
+                            "inv" => {
                                 let storage_target: Option<u64>;
                                 {
                                     let storage = SELECTED_USER_STORE.get().unwrap().lock();
@@ -196,10 +193,8 @@ impl EventHandler for Handler {
                                         return;    
                                     };
                                 }
-                            }
-                        },
-                        "kick" => {
-                            if let (Some(owner), Some(channel)) = (owner_id, channel_id) {
+                            },
+                            "kick" => {
                                 let storage_target: Option<u64>;
                                 {
                                     let storage = SELECTED_USER_STORE.get().unwrap().lock();
@@ -258,10 +253,10 @@ impl EventHandler for Handler {
                                         return;    
                                     };
                                 }
+                            },
+                            _ => {
+                                tracing::warn!("Unkown interaction id: {}", action_type);
                             }
-                        },
-                        _ => {
-                            tracing::warn!("Unkown interaction id: {}", action_type);
                         }
                     }
                 }
