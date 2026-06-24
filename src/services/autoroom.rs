@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, stream::FuturesUnordered};
-use serenity::all::{ ChannelId, Context, Guild, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId};
+use serenity::{all::{ ChannelId, Context, Guild, GuildChannel, Http, PermissionOverwrite, PermissionOverwriteType, Permissions, UserId}, builder::CreateInvite, model::user::User};
 
 use crate::sql::{autoroom::AutoRoomDeleteStrategy, pool::GLOBAL_SQL_POOL, prelude::{AutoRoom, MonitoredAutoRoom}};
 
@@ -68,7 +68,7 @@ pub async fn revoke_guest_privileges(
 
 
 pub mod voice_channel {
-    use serenity::all::{ChannelId, EditMember, GuildId, Http, User};
+    use serenity::{all::{ChannelId, EditMember, GuildId, Http, User}, builder::{CreateInvite, CreateMessage}};
 
     use crate::{services::autoroom::revoke_guest_privileges, sql::{pool::PoolType, prelude::MonitoredAutoRoom}};
     use super::grant_guest_privileges;
@@ -85,7 +85,7 @@ pub mod voice_channel {
         SerenityError,
     }
 
-    pub async fn invite_user(http: &Http, pool: &PoolType, author_id: i64, invited_user: &User) -> Result<(), BotError> {
+    pub async fn invite_user(http: &Http, pool: &PoolType, author_id: i64, invited_user: &User) -> Result<InviteUserResult, BotError> {
         let monitored_autoroom = match MonitoredAutoRoom::get_by_owner_id(pool, author_id).await {
             Ok(option) => match option {
                 Some(monitored_autoroom_result) => monitored_autoroom_result,
@@ -108,7 +108,32 @@ pub mod voice_channel {
                 BotError::SerenityError
             })?;
 
-        Ok(())
+        send_channel_invite(http, &channel_id, author_id, invited_user).await.map_err(|_| BotError::SerenityError)
+    }
+
+    pub enum InviteUserResult {
+        Ok,
+        SendDmErr
+    }
+
+    async fn send_channel_invite(http: &Http, channel: &ChannelId, author_id: i64, invited_user: &User) -> Result<InviteUserResult, serenity::Error> {
+        tracing::info!("Send Channel Invite. Invited({}) to Channel({})", invited_user, channel.get());
+
+        let builder = CreateInvite::new().max_age(3600);
+        let invite = channel.create_invite(http, builder).await?;
+
+        let message_builder = CreateMessage::new().content(format!(
+            "Hi! You've been invited to join the channel by <@{}>\n{}",
+            author_id as u64,
+            invite.url()
+        ));
+
+        if let Err(err) = invited_user.direct_message(http, message_builder).await {
+            tracing::info!("send_channel_invite dm err: {}", &err);
+            return Ok(InviteUserResult::SendDmErr)
+        }
+
+        Ok(InviteUserResult::Ok)
     }
 
     pub async fn kick_user(http: &Http, pool: &PoolType, guild_id: GuildId, author_id: i64, user_to_kick: &User) -> Result<(), BotError> {
