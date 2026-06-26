@@ -2,7 +2,7 @@ use poise::{CreateReply, serenity_prelude as serenity};
 use ::serenity::all::Mentionable;
 
 use crate::{
-    services::autoroom::{self, cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms}, sql::autoroom::{AutoRoom, AutoRoomDeleteStrategy}
+    services::autoroom::{self, cleanup_categories_monitored_rooms, cleanup_db_monitored_rooms, voice_channel::InviteUserResult}, sql::autoroom::{AutoRoom, AutoRoomDeleteStrategy}
 };
 
 use super::{ CommandContext, CommandError };
@@ -23,11 +23,18 @@ pub async fn invite(
     let pool = &ctx.data().pool;
     let author = ctx.author();
     
-    autoroom::voice_channel::invite_user(ctx.http(), pool, author.id.get() as i64, &user).await?;
+    let response_message_content = match autoroom::voice_channel::invite_user(ctx.http(), pool, author.id.get() as i64, &user).await? {
+        InviteUserResult::Ok => format!(
+            "{} has been successfully invited", &user.mention().to_string()
+        ),
+        InviteUserResult::SendDmErr => format!(
+            "{} has been successfully invited\nBut failed to DM an invite", &user.mention().to_string()
+        ),
+    };
 
     ctx.send(
         CreateReply::default()
-            .content(format!("{} has been successfully invited", &user.mention().to_string()))
+            .content(response_message_content)
             .ephemeral(false)
     ).await?;
 

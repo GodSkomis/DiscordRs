@@ -23,7 +23,7 @@ use voice::{create_proccessing, remove_channel_by_voicestate};
 use sql::{prelude::*, SerenityPool};
 
 use crate::services::autoroom::cleanup_categories_monitored_rooms;
-use crate::services::autoroom::voice_channel::{invite_user, kick_user};
+use crate::services::autoroom::voice_channel::{InviteUserResult, invite_user, kick_user};
 use crate::sql::pool::SqlPool;
 use crate::{services::autoroom::cleanup_db_monitored_rooms, sql::pool::GLOBAL_SQL_POOL};
 
@@ -158,10 +158,25 @@ impl EventHandler for Handler {
                                         },
                                     };
                                     
-                                    if let Err(err) = invite_user(&ctx.http, &pool, owner.get() as i64, &invited_user).await {
-                                        tracing::error!("{:?}", err);
-                                        return;    
+                                    let response_message_content;
+                                    match invite_user(&ctx.http, &pool, owner.get() as i64, &invited_user).await {
+                                        Ok(_result) => {
+                                            response_message_content = match _result {
+                                                InviteUserResult::Ok => format!(
+                                                    "{} has been successfully invited", &invited_user.mention().to_string()
+                                                ),
+                                                InviteUserResult::SendDmErr => format!(
+                                                    "{} has been successfully invited\nBut failed to DM an invite", &invited_user.mention().to_string()
+                                                ),
+                                            };
+                                        },
+                                        Err(err) => {
+                                            tracing::error!("{:?}", err);
+                                            return;
+                                        }
                                     };
+
+                                    
 
                                     if let Err(err) = mci
                                         // .edit_response(
@@ -176,10 +191,7 @@ impl EventHandler for Handler {
                                         .create_followup(
                                             &ctx.http,
                                             CreateInteractionResponseFollowup::new()
-                                                .content(format!(
-                                                        "{} has been successfully invited",
-                                                        &invited_user.mention().to_string())
-                                                )
+                                                .content(response_message_content)
                                         ).await
                                     {
                                         tracing::error!("{:?}", err);
